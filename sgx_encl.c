@@ -176,14 +176,14 @@ void sgx_tgid_ctx_release(struct kref *ref)
 
 static int sgx_measure(struct sgx_epc_page *secs_page,
 		       struct sgx_epc_page *epc_page,
-		       u16 mrmask)
+		       u16 mrmask, int page_size) //YSSU
 {
 	void *secs;
 	void *epc;
 	int ret = 0;
 	int i, j;
 
-	for (i = 0, j = 1; i < 0x1000 && !ret; i += 0x100, j <<= 1) {
+	for (i = 0, j = 1; i < page_size && !ret; i += 0x100, j <<= 1) { //YSSU
 		if (!(j & mrmask))
 			continue;
 
@@ -203,23 +203,33 @@ static int sgx_eadd(struct sgx_epc_page *secs_page,
 		    struct sgx_epc_page *epc_page,
 		    unsigned long linaddr,
 		    struct sgx_secinfo *secinfo,
-		    struct page *backing)
+		    struct page *backing, int page_size) //YSSU
 {
 	struct sgx_pageinfo pginfo;
 	void *epc_page_vaddr;
-	int ret;
+	int ret = -14;//YSSU
+	int i; //YSSU
+	unsigned long srcpage; //YSSU
 
 	pginfo.srcpge = (unsigned long)kmap_atomic(backing);
+	srcpage = pginfo.srcpge; //YSSU
 	pginfo.secs = (unsigned long)sgx_get_page(secs_page);
 	epc_page_vaddr = sgx_get_page(epc_page);
 
 	pginfo.linaddr = linaddr;
 	pginfo.secinfo = (unsigned long)secinfo;
-	ret = __eadd(&pginfo, epc_page_vaddr);
+
+	//YSSU
+	for(i=0; i < page_size; i+=PAGE_SIZE)
+	{
+		ret = __eadd(&pginfo, epc_page_vaddr + i); //YSSU
+		pginfo.linaddr += PAGE_SIZE;
+		pginfo.srcpge += PAGE_SIZE;
+	}
 
 	sgx_put_page(epc_page_vaddr);
 	sgx_put_page((void *)(unsigned long)pginfo.secs);
-	kunmap_atomic((void *)(unsigned long)pginfo.srcpge);
+	kunmap_atomic((void *)(unsigned long)srcpage); //YSSU
 
 	return ret;
 }
@@ -250,14 +260,10 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 		return false;
 	}
 
-  //YSSU
+	//YSSU
 	if(encl_page->page_size == LARGE_PAGE_SIZE)
-	{
 		ret = vm_insert_pmd(vma, encl_page->addr, PFN_DOWN(epc_page->pa));
-		sgx_zap_vma_ptes(vma, encl_page->addr, encl_page->page_size);
-		pr_info("It worked\n");
-	}
-  //else
+	else
 		ret = vm_insert_pfn(vma, encl_page->addr, PFN_DOWN(epc_page->pa));
 	if (ret) {
 		sgx_put_backing(backing, 0);
@@ -265,7 +271,7 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 	}
 
 	ret = sgx_eadd(encl->secs.epc_page, epc_page, encl_page->addr,
-		       &req->secinfo, backing);
+		       &req->secinfo, backing, encl_page->page_size);	//YSSU
 
 	sgx_put_backing(backing, 0);
 	if (ret) {
@@ -276,12 +282,19 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 
 	encl->secs_child_cnt++;
 
-	ret = sgx_measure(encl->secs.epc_page, epc_page, req->mrmask);
+	ret = sgx_measure(encl->secs.epc_page, epc_page, req->mrmask, encl_page->page_size); //YSSU
 	if (ret) {
 		sgx_warn(encl, "EEXTEND returned %d\n", ret);
 		sgx_zap_vma_ptes(vma, encl_page->addr, encl_page->page_size); //YSSU
 		return false;
 	}
+
+	/*//YSSU: Temporary fix hopefully
+	if(encl_page->page_size == LARGE_PAGE_SIZE)
+	{
+		sgx_zap_vma_ptes(vma, encl_page->addr, encl_page->page_size);
+		vm_insert_pfn(vma, encl_page->addr, PFN_DOWN(epc_page->pa));
+	}*/
 
 	epc_page->encl_page = encl_page;
 	encl_page->epc_page = epc_page;
@@ -323,7 +336,7 @@ static void sgx_add_page_worker(struct work_struct *work)
 		{
 			epc_page = sgx_alloc_lp_page(0);
 			if(epc_page)
-				pr_info("large page addr=0x%lx\n", epc_page->pa);
+				pr_info("large page addr=0x%lx\n", (unsigned long)epc_page->pa);
 		}
 		else
 			epc_page = sgx_alloc_page(0);

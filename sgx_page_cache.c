@@ -98,7 +98,6 @@ static int sgx_test_and_clear_young_cb(pte_t *ptep, pgtable_t token,
 	if (ret) {
 		pte = pte_mkold(*ptep);
 		set_pte_at((struct mm_struct *)data, addr, ptep, pte);
-		//pr_info("intel_sgx: %s 0x%lx\n", __func__, pte.pte); //YSSU
 	}
 
 	return ret;
@@ -413,6 +412,7 @@ int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 		if (!new_epc_page)
 			goto err_freelist;
 		new_epc_page->pa = (start + i) | bank;
+		new_epc_page->page_size = PAGE_SIZE; //YSSU
 
 		spin_lock(&sgx_free_list_lock);
 		list_add_tail(&new_epc_page->list, &sgx_free_list);
@@ -446,6 +446,7 @@ int sgx_add_epc_lp_bank(resource_size_t start, unsigned long size, int bank)
 			goto err_freelist;
 		//YSSU: *IMPORTANT* It is necessary to have the bank bit set
 		new_epc_page->pa = (start + i) | bank;
+		new_epc_page->page_size = LARGE_PAGE_SIZE; //YSSU
 
 		spin_lock(&sgx_free_list_lock);
 		list_add_tail(&new_epc_page->list, &sgx_free_lp_list);
@@ -490,6 +491,12 @@ void sgx_page_cache_teardown(void)
 
 	spin_lock(&sgx_free_list_lock);
 	list_for_each_safe(parser, temp, &sgx_free_list) {
+		entry = list_entry(parser, struct sgx_epc_page, list);
+		list_del(&entry->list);
+		kfree(entry);
+	}
+	//YSSU
+	list_for_each_safe(parser, temp, &sgx_free_lp_list) {
 		entry = list_entry(parser, struct sgx_epc_page, list);
 		list_del(&entry->list);
 		kfree(entry);
@@ -611,17 +618,28 @@ void sgx_free_page(struct sgx_epc_page *entry, struct sgx_encl *encl)
 {
 	void *epc;
 	int ret;
+	int i;//YSSU
 
 	epc = sgx_get_page(entry);
-	ret = __eremove(epc);
+	for(i=0; i<entry->page_size; i+=PAGE_SIZE) //YSSU
+	{
+		ret = __eremove(epc + i); //YSSU
+		if (ret)
+			sgx_crit(encl, "EREMOVE returned %d\n", ret);
+	}
 	sgx_put_page(epc);
 
-	if (ret)
-		sgx_crit(encl, "EREMOVE returned %d\n", ret);
-
 	spin_lock(&sgx_free_list_lock);
-	list_add(&entry->list, &sgx_free_list);
-	sgx_nr_free_pages++;
+	if(entry->page_size == LARGE_PAGE_SIZE) //YSSU
+	{
+			list_add(&entry->list, &sgx_free_lp_list);
+			sgx_nr_lp_pages++;
+	}
+	else
+	{
+		list_add(&entry->list, &sgx_free_list);
+		sgx_nr_free_pages++;
+	}
 	spin_unlock(&sgx_free_list_lock);
 }
 

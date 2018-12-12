@@ -26,4 +26,4 @@ __attribute__((section(".modinfo"))) =
 
 MODULE_ALIAS("acpi*:INT0E0C:*");
 
-MODULE_INFO(srcversion, "8A35C18DC3D67B875872725");
+MODULE_INFO(srcversion, "6DD1A3ED53247AF2AD5759D");

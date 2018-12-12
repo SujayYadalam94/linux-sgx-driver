@@ -85,6 +85,7 @@ struct sgx_epc_page {
 	resource_size_t	pa;
 	struct list_head list;
 	struct sgx_encl_page *encl_page;
+	unsigned int page_size; //YSSU
 };
 
 enum sgx_alloc_flags {

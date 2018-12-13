@@ -1,1 +1,0 @@
-cmd_/home/sujay/Documents/linux-sgx-driver/isgx.ko := ld -r -m elf_x86_64 -z max-page-size=0x200000 -T ./scripts/module-common.lds --build-id  -o /home/sujay/Documents/linux-sgx-driver/isgx.ko /home/sujay/Documents/linux-sgx-driver/isgx.o /home/sujay/Documents/linux-sgx-driver/isgx.mod.o ;  true

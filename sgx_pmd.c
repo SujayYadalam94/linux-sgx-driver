@@ -156,7 +156,7 @@ unsigned long sgx_zap_pmd_range(struct mmu_gather *tlb,
 			zap_pte_range_p = (void *)kallsyms_lookup_name("zap_pte_range");
 		if(zap_pte_range_p == NULL)
 		{
-			pr_err("intel_sgx: %s zap_pte_range symbol not found\n", __func__);
+			//pr_err("intel_sgx: %s zap_pte_range symbol not found\n", __func__);
 			return addr;
 		}
 		next = zap_pte_range_p(tlb, vma, pmd, addr, next, NULL);

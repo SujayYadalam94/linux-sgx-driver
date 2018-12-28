@@ -203,12 +203,13 @@ static int sgx_eadd(struct sgx_epc_page *secs_page,
 		    struct sgx_epc_page *epc_page,
 		    unsigned long linaddr,
 		    struct sgx_secinfo *secinfo,
-		    struct page *backing) //YSSU
+		    struct page *backing, u16 mrmask) //YSSU
 {
 	struct sgx_pageinfo pginfo;
+	void *secs;
 	void *epc_page_vaddr;
 	int ret = -14;//YSSU
-	int i; //YSSU
+	int i,j; //YSSU
 	unsigned long srcpage; //YSSU
 
 	pginfo.srcpge = (unsigned long)kmap_atomic(backing);
@@ -223,6 +224,15 @@ static int sgx_eadd(struct sgx_epc_page *secs_page,
 	for(i=0; i < epc_page->page_size; i+=PAGE_SIZE)
 	{
 		ret = __eadd(&pginfo, epc_page_vaddr + i); //YSSU
+
+		/*YSSU: *IMPORTANT* signature was failing because EADD and EEXTEND
+		were not called at the correct order */
+		for (j = 0; j < 0x1000 && !ret; j += 0x100) { //YSSU
+			if(!(mrmask))
+				break;
+			ret = __eextend(pginfo.secs, (void *)((unsigned long)epc_page_vaddr + i + j));
+		}
+
 		pginfo.linaddr += PAGE_SIZE;
 		pginfo.srcpge += PAGE_SIZE;
 	}
@@ -271,7 +281,7 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 	}
 
 	ret = sgx_eadd(encl->secs.epc_page, epc_page, encl_page->addr,
-		       &req->secinfo, backing);	//YSSU
+		       &req->secinfo, backing, req->mrmask);	//YSSU
 
 	sgx_put_backing(backing, 0);
 	if (ret) {
@@ -282,12 +292,12 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 
 	encl->secs_child_cnt++;
 
-	ret = sgx_measure(encl->secs.epc_page, epc_page, req->mrmask); //YSSU
-	if (ret) {
-		sgx_warn(encl, "EEXTEND returned %d\n", ret);
-		sgx_zap_vma_ptes(vma, encl_page->addr, encl_page->page_size); //YSSU
-		return false;
-	}
+//	ret = sgx_measure(encl->secs.epc_page, epc_page, req->mrmask); //YSSU
+//	if (ret) {
+//		sgx_warn(encl, "EEXTEND returned %d\n", ret);
+//		sgx_zap_vma_ptes(vma, encl_page->addr, encl_page->page_size); //YSSU
+//		return false;
+//	}
 
 	/*//YSSU: Temporary fix hopefully
 	if(encl_page->page_size == LARGE_PAGE_SIZE)

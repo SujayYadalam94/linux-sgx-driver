@@ -82,6 +82,10 @@ MODULE_VERSION(DRV_VERSION);
 
 #define FEATURE_CONTROL_SGX_ENABLE                      (1<<18)
 
+#define NUM_LARGE_PAGES		2 //YSSU
+#define LARGE_PAGE_EPC_SIZE		(NUM_LARGE_PAGES*2*1024*1024) //YSSU
+#define SGX_EPC_LP_BANK   0  //YSSU
+
 /*
  * Global data.
  */
@@ -233,12 +237,29 @@ static int sgx_dev_init(struct device *parent)
 	//YSSU
 	if(sgx_nr_epc_banks == 1)
 	{
-		sgx_epc_banks[0].size -= 0x2180000;
-		sgx_epc_banks[1].pa = sgx_epc_banks[0].pa + sgx_epc_banks[0].size;
-		sgx_epc_banks[1].size = 0x2180000;
+		sgx_epc_banks[1].pa = sgx_epc_banks[SGX_EPC_LP_BANK].pa + LARGE_PAGE_EPC_SIZE; //Bank 1 is 4k pages
+		sgx_epc_banks[1].size = sgx_epc_banks[SGX_EPC_LP_BANK].size - LARGE_PAGE_EPC_SIZE;
+		sgx_epc_banks[SGX_EPC_LP_BANK].size = LARGE_PAGE_EPC_SIZE;//0x2180000;
+		//YSSU
+	#ifdef CONFIG_X86_64
+			sgx_epc_banks[SGX_EPC_LP_BANK].va = (unsigned long)
+				ioremap_cache(sgx_epc_banks[SGX_EPC_LP_BANK].pa, sgx_epc_banks[SGX_EPC_LP_BANK].size);
+			if(!sgx_epc_banks[SGX_EPC_LP_BANK].va){
+				sgx_nr_epc_banks = 0;
+				ret = -ENOMEM;
+				goto out_iounmap;
+			}
+	#endif
+			ret = sgx_add_epc_lp_bank(sgx_epc_banks[SGX_EPC_LP_BANK].pa, sgx_epc_banks[SGX_EPC_LP_BANK].size, SGX_EPC_LP_BANK);
+			if(ret)
+			{
+				sgx_nr_epc_banks = 1;
+				goto out_iounmap;
+			}
+			sgx_nr_epc_banks++;
 	}
 
-	for (i = 0; i < sgx_nr_epc_banks; i++) {
+	for (i = 1; i < sgx_nr_epc_banks; i++) {
 #ifdef CONFIG_X86_64
 		sgx_epc_banks[i].va = (unsigned long)
 			ioremap_cache(sgx_epc_banks[i].pa,
@@ -255,27 +276,6 @@ static int sgx_dev_init(struct device *parent)
 			sgx_nr_epc_banks = i + 1;
 			goto out_iounmap;
 		}
-	}
-
-	//YSSU
-	if(sgx_nr_epc_banks == 1)
-	{
-#ifdef CONFIG_X86_64
-		sgx_epc_banks[1].va = (unsigned long)
-			ioremap_cache(sgx_epc_banks[1].pa, sgx_epc_banks[1].size);
-		if(!sgx_epc_banks[1].va){
-			sgx_nr_epc_banks = 1;
-			ret = -ENOMEM;
-			goto out_iounmap;
-		}
-#endif
-		ret = sgx_add_epc_lp_bank(sgx_epc_banks[1].pa, sgx_epc_banks[1].size, 1);
-		if(ret)
-		{
-			sgx_nr_epc_banks = 2;
-			goto out_iounmap;
-		}
-		sgx_nr_epc_banks++;
 	}
 
 	ret = sgx_page_cache_init();

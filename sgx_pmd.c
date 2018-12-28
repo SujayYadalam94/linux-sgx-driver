@@ -65,13 +65,21 @@ int insert_pmd(struct vm_area_struct *vma, unsigned long addr,
 
        	mm_alloc_pmd_p = (void *)kallsyms_lookup_name("mm_alloc_pmd");
        	if(mm_alloc_pmd_p == NULL)
-       		goto out;
+       		return retval;
         pmd = mm_alloc_pmd_p(mm, addr);
         if (!pmd)
-                goto out;
+        	return retval;
+
+				retval = -EBUSY;
 
         ptl = pmd_lock(mm, pmd);
-        retval = -EBUSY;
+
+				if(!ptl)
+				{
+					spin_unlock(ptl);
+					return retval;
+				}
+
         if (!pmd_none(*pmd)) {
                 if (mkwrite) {
                         if (WARN_ON_ONCE(pmd_pfn(*pmd) != pfn_t_to_pfn(pfn)))
@@ -104,7 +112,6 @@ out_mkwrite:
         retval = 0;
 out_unlock:
         spin_unlock(ptl);
-out:
         return retval;
 }
 
@@ -117,21 +124,17 @@ int sgx_zap_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 {
 	pmd_t orig_pmd;
 	spinlock_t *ptl;
-	struct page *page = NULL;
 
 	ptl = pmd_lock(vma->vm_mm, pmd);
 	if (!ptl)
+	{
+		spin_unlock(ptl);
 		return 0;
-
+	}
 	orig_pmd = pmdp_huge_get_and_clear_full(tlb->mm, addr, pmd,	tlb->fullmm);
 	tlb_remove_pmd_tlb_entry(tlb, pmd, addr);
 
-	if (pmd_present(orig_pmd)) {
-			page = pmd_page(orig_pmd);
-		}
-
 	spin_unlock(ptl);
-
 	return 1;
 }
 

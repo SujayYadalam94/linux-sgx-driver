@@ -85,7 +85,6 @@ static void sgx_vma_open(struct vm_area_struct *vma)
 static void sgx_vma_close(struct vm_area_struct *vma)
 {
 	struct sgx_encl *encl = vma->vm_private_data;
-
 	if (!encl)
 		return;
 

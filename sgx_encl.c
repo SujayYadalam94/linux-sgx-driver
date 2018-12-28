@@ -176,16 +176,16 @@ void sgx_tgid_ctx_release(struct kref *ref)
 
 static int sgx_measure(struct sgx_epc_page *secs_page,
 		       struct sgx_epc_page *epc_page,
-		       u16 mrmask, int page_size) //YSSU
+		       u16 mrmask) //YSSU
 {
 	void *secs;
 	void *epc;
 	int ret = 0;
 	int i, j;
 
-	for (i = 0, j = 1; i < page_size && !ret; i += 0x100, j <<= 1) { //YSSU
-		if (!(j & mrmask))
-			continue;
+	for (i = 0, j = 1; i < epc_page->page_size && !ret; i += 0x100, j <<= 1) { //YSSU
+		if(!(mrmask))
+			break;
 
 		secs = sgx_get_page(secs_page);
 		epc = sgx_get_page(epc_page);
@@ -203,7 +203,7 @@ static int sgx_eadd(struct sgx_epc_page *secs_page,
 		    struct sgx_epc_page *epc_page,
 		    unsigned long linaddr,
 		    struct sgx_secinfo *secinfo,
-		    struct page *backing, int page_size) //YSSU
+		    struct page *backing) //YSSU
 {
 	struct sgx_pageinfo pginfo;
 	void *epc_page_vaddr;
@@ -220,7 +220,7 @@ static int sgx_eadd(struct sgx_epc_page *secs_page,
 	pginfo.secinfo = (unsigned long)secinfo;
 
 	//YSSU
-	for(i=0; i < page_size; i+=PAGE_SIZE)
+	for(i=0; i < epc_page->page_size; i+=PAGE_SIZE)
 	{
 		ret = __eadd(&pginfo, epc_page_vaddr + i); //YSSU
 		pginfo.linaddr += PAGE_SIZE;
@@ -271,7 +271,7 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 	}
 
 	ret = sgx_eadd(encl->secs.epc_page, epc_page, encl_page->addr,
-		       &req->secinfo, backing, encl_page->page_size);	//YSSU
+		       &req->secinfo, backing);	//YSSU
 
 	sgx_put_backing(backing, 0);
 	if (ret) {
@@ -282,7 +282,7 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 
 	encl->secs_child_cnt++;
 
-	ret = sgx_measure(encl->secs.epc_page, epc_page, req->mrmask, encl_page->page_size); //YSSU
+	ret = sgx_measure(encl->secs.epc_page, epc_page, req->mrmask); //YSSU
 	if (ret) {
 		sgx_warn(encl, "EEXTEND returned %d\n", ret);
 		sgx_zap_vma_ptes(vma, encl_page->addr, encl_page->page_size); //YSSU

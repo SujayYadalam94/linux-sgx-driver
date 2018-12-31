@@ -183,7 +183,7 @@ static int sgx_measure(struct sgx_epc_page *secs_page,
 	int ret = 0;
 	int i, j;
 
-	for (i = 0, j = 1; i < epc_page->page_size && !ret; i += 0x100, j <<= 1) { //YSSU
+	for (i = 0, j = 1; i < 0x1000 && !ret; i += 0x100, j <<= 1) { //YSSU
 		if(!(mrmask))
 			break;
 

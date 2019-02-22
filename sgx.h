@@ -72,6 +72,7 @@
 #include "sgx_arch.h"
 #include "sgx_user.h"
 #include "sgx_pmd.h" //YSSU
+#include "sgx_buddy.h" //YSSU
 
 #define SGX_EINIT_SPIN_COUNT	20
 #define SGX_EINIT_SLEEP_COUNT	50

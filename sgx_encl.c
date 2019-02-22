@@ -206,7 +206,7 @@ static int sgx_eadd(struct sgx_epc_page *secs_page,
 		    struct page *backing, u16 mrmask) //YSSU
 {
 	struct sgx_pageinfo pginfo;
-	void *secs;
+	//void *secs; //YSSU
 	void *epc_page_vaddr;
 	int ret = -14;//YSSU
 	int i,j; //YSSU

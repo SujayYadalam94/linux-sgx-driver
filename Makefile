@@ -4,9 +4,10 @@ ifneq ($(KERNELRELEASE),)
 		sgx_page_cache.o \
 		sgx_ioctl.o \
 		sgx_vma.o \
-		sgx_util.o\
-		sgx_encl.o\
-		sgx_pmd.o
+		sgx_util.o \
+		sgx_encl.o \
+		sgx_pmd.o \
+		sgx_buddy.o
 	obj-m += isgx.o
 else
 KDIR := /lib/modules/$(shell uname -r)/build

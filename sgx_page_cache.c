@@ -75,6 +75,7 @@
 
 static LIST_HEAD(sgx_free_list);
 static LIST_HEAD(sgx_free_lp_list); //YSSU
+extern struct list_head sgx_free_lists[LIST_COUNT]; //YSSU: for buddy
 static DEFINE_SPINLOCK(sgx_free_list_lock);
 
 LIST_HEAD(sgx_tgid_ctx_list);
@@ -84,9 +85,11 @@ static unsigned int sgx_nr_total_epc_pages;
 static unsigned int sgx_nr_free_pages;
 static unsigned int sgx_nr_low_pages = SGX_NR_LOW_EPC_PAGES_DEFAULT;
 static unsigned int sgx_nr_high_pages;
-static unsigned int sgx_nr_lp_pages;
+static unsigned int sgx_nr_lp_pages=0;
 static struct task_struct *ksgxswapd_tsk;
 static DECLARE_WAIT_QUEUE_HEAD(ksgxswapd_waitq);
+extern uint8_t page_is_split[47][(1 << (LIST_COUNT-1))-1];
+
 
 static int sgx_test_and_clear_young_cb(pte_t *ptep, pgtable_t token,
 				       unsigned long addr, void *data)
@@ -310,6 +313,7 @@ static void sgx_evict_page(struct sgx_encl_page *entry,
 			   struct sgx_encl *encl)
 {
 	sgx_ewb(encl, entry);
+	pr_info("7");
 	sgx_free_page(entry->epc_page, encl);
 	entry->epc_page = NULL;
 	entry->flags &= ~SGX_ENCL_PAGE_RESERVED;
@@ -345,6 +349,7 @@ static void sgx_write_pages(struct sgx_encl *encl, struct list_head *src)
 	while (!list_empty(src)) {
 		entry = list_first_entry(src, struct sgx_epc_page, list);
 		list_del(&entry->list);
+		pr_info("1");
 		sgx_evict_page(entry->encl_page, encl);
 		encl->secs_child_cnt--;
 	}
@@ -401,11 +406,57 @@ static int ksgxswapd(void *p)
 	return 0;
 }
 
+#ifdef BUDDY
+/* YSSU: Modified the sgx_add_epc_bank to create only
+ * 2M pages initially when the driver is initialized.
+ */
 int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 {
 	unsigned long i;
 	struct sgx_epc_page *new_epc_page, *entry;
 	struct list_head *parser, *temp;
+
+	pr_info("intel sgx: %s\n", __func__);
+	//YSSU: create only large pages initially
+	for (i = 0; (i + LARGE_PAGE_SIZE) < size; i += LARGE_PAGE_SIZE) {
+		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
+		if (!new_epc_page)
+			goto err_freelist;
+		new_epc_page->pa = (start + i) | bank;
+		new_epc_page->page_size = LARGE_PAGE_SIZE; //YSSU
+
+		//YSSU: add 2M pages to 0 order list
+		spin_lock(&sgx_free_list_lock);
+		list_add_tail(&new_epc_page->list, &sgx_free_lists[0]);
+		sgx_nr_lp_pages++;
+		sgx_nr_free_pages += 512;
+		sgx_nr_total_epc_pages += 512;
+		spin_unlock(&sgx_free_list_lock);
+	}
+	//YSSU: allocate memory for page_is_split bit structure
+  //page_is_split[0] = (uint8_t *) kzalloc(sgx_nr_lp_pages*(1<<(LIST_COUNT-1))*sizeof(uint8_t), GFP_KERNEL);
+	pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_lp_pages);
+	return 0;
+
+err_freelist:
+		list_for_each_safe(parser, temp, &sgx_free_lists[0]) {
+			spin_lock(&sgx_free_list_lock);
+			entry = list_entry(parser, struct sgx_epc_page, list);
+			list_del(&entry->list);
+			spin_unlock(&sgx_free_list_lock);
+			kfree(entry);
+		}
+		return -ENOMEM;
+}
+
+#else
+int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
+{
+	unsigned long i;
+	struct sgx_epc_page *new_epc_page, *entry;
+	struct list_head *parser, *temp;
+
+	pr_info("intel sgx:%s\n", __func__);
 
 	for (i = 0; i < size; i += PAGE_SIZE) {
 		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
@@ -420,9 +471,11 @@ int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 		sgx_nr_free_pages++;
 		spin_unlock(&sgx_free_list_lock);
 	}
-
+	pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_free_pages);
 	return 0;
+
 err_freelist:
+	pr_info("%s: ERROR\n", __func__);
 	list_for_each_safe(parser, temp, &sgx_free_list) {
 		spin_lock(&sgx_free_list_lock);
 		entry = list_entry(parser, struct sgx_epc_page, list);
@@ -432,7 +485,7 @@ err_freelist:
 	}
 	return -ENOMEM;
 }
-
+#endif
 //YSSU
 int sgx_add_epc_lp_bank(resource_size_t start, unsigned long size, int bank)
 {
@@ -509,14 +562,18 @@ static struct sgx_epc_page *sgx_alloc_page_fast(void)
 	struct sgx_epc_page *entry = NULL;
 
 	spin_lock(&sgx_free_list_lock);
-
+#ifndef BUDDY
 	if (!list_empty(&sgx_free_list)) {
 		entry = list_first_entry(&sgx_free_list, struct sgx_epc_page,
 					 list);
 		list_del(&entry->list);
 		sgx_nr_free_pages--;
 	}
-
+#else
+	entry = sgx_alloc_page_buddy(0);
+	//if(entry)
+	//	pr_info("intel sgx: %s: page allocated: 0x%lx size:0x%x \n", __func__, entry->pa, entry->page_size);
+#endif
 	spin_unlock(&sgx_free_list_lock);
 
 	return entry;
@@ -528,13 +585,22 @@ static struct sgx_epc_page *sgx_alloc_lp_page_fast(void)
 	struct sgx_epc_page *entry = NULL;
 
 	spin_lock(&sgx_free_list_lock);
-
+#ifndef BUDDY
 	if (!list_empty(&sgx_free_lp_list)) {
 		entry = list_first_entry(&sgx_free_lp_list, struct sgx_epc_page,
 					 list);
 		list_del(&entry->list);
+
 		sgx_nr_lp_pages--;
 	}
+#else
+	entry = sgx_alloc_page_buddy(1);
+	if(entry)
+	{
+		sgx_nr_lp_pages--;
+		sgx_nr_free_pages -= 512;
+	}
+#endif
 
 	spin_unlock(&sgx_free_list_lock);
 
@@ -556,11 +622,12 @@ struct sgx_epc_page *sgx_alloc_page(unsigned int flags)
 {
 	struct sgx_epc_page *entry;
 
+	//pr_info("intel sgx: %s\n", __func__);
 	for ( ; ; ) {
 		entry = sgx_alloc_page_fast();
 		if (entry)
 			break;
-
+			pr_info("3");
 		/* We need at minimum two pages for the #PF handler. */
 		if (atomic_read(&sgx_va_pages_cnt) >
 		    (sgx_nr_total_epc_pages - 2))
@@ -630,6 +697,7 @@ void sgx_free_page(struct sgx_epc_page *entry, struct sgx_encl *encl)
 	sgx_put_page(epc);
 
 	spin_lock(&sgx_free_list_lock);
+#ifndef BUDDY
 	if(entry->page_size == LARGE_PAGE_SIZE) //YSSU
 	{
 			list_add(&entry->list, &sgx_free_lp_list);
@@ -640,6 +708,11 @@ void sgx_free_page(struct sgx_epc_page *entry, struct sgx_encl *encl)
 		list_add(&entry->list, &sgx_free_list);
 		sgx_nr_free_pages++;
 	}
+#else
+	sgx_free_page_buddy(entry);
+	sgx_nr_free_pages += (entry->page_size / PAGE_SIZE);
+	//pr_info("intel sgx: %s\n",__func__);
+#endif
 	spin_unlock(&sgx_free_list_lock);
 }
 

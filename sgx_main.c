@@ -99,6 +99,7 @@ u64 sgx_encl_size_max_64;
 u64 sgx_xfrm_mask = 0x3;
 u32 sgx_misc_reserved;
 u32 sgx_xsave_size_tbl[64];
+unsigned long epc_start_addr; //YSSU
 
 #ifdef CONFIG_COMPAT
 long sgx_compat_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -230,10 +231,12 @@ static int sgx_dev_init(struct device *parent)
 
 		sgx_epc_banks[i].pa = pa;
 		sgx_epc_banks[i].size = size;
+		
+		epc_start_addr = pa; //YSSU
 	}
 
 	sgx_nr_epc_banks = i;
-
+/*
 	//YSSU
 	if(sgx_nr_epc_banks == 1)
 	{
@@ -258,8 +261,12 @@ static int sgx_dev_init(struct device *parent)
 			}
 			sgx_nr_epc_banks++;
 	}
+*/
 
-	for (i = 1; i < sgx_nr_epc_banks; i++) {
+	//YSSU
+	sgx_init_free_lists();
+
+	for (i = 0; i < sgx_nr_epc_banks; i++) {
 #ifdef CONFIG_X86_64
 		sgx_epc_banks[i].va = (unsigned long)
 			ioremap_cache(sgx_epc_banks[i].pa,

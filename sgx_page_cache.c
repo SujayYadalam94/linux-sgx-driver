@@ -76,7 +76,8 @@
 static LIST_HEAD(sgx_free_list);
 static LIST_HEAD(sgx_free_lp_list); //YSSU
 extern struct list_head sgx_free_lists[LIST_COUNT]; //YSSU: for buddy
-static DEFINE_SPINLOCK(sgx_free_list_lock);
+//static DEFINE_SPINLOCK(sgx_free_list_lock);
+spinlock_t sgx_free_list_lock = __SPIN_LOCK_UNLOCKED(sgx_free_list_lock);
 
 LIST_HEAD(sgx_tgid_ctx_list);
 DEFINE_MUTEX(sgx_tgid_ctx_mutex);
@@ -622,12 +623,10 @@ struct sgx_epc_page *sgx_alloc_page(unsigned int flags)
 {
 	struct sgx_epc_page *entry;
 
-	//pr_info("intel sgx: %s\n", __func__);
 	for ( ; ; ) {
 		entry = sgx_alloc_page_fast();
 		if (entry)
 			break;
-			pr_info("3");
 		/* We need at minimum two pages for the #PF handler. */
 		if (atomic_read(&sgx_va_pages_cnt) >
 		    (sgx_nr_total_epc_pages - 2))
@@ -711,7 +710,6 @@ void sgx_free_page(struct sgx_epc_page *entry, struct sgx_encl *encl)
 #else
 	sgx_free_page_buddy(entry);
 	sgx_nr_free_pages += (entry->page_size / PAGE_SIZE);
-	//pr_info("intel sgx: %s\n",__func__);
 #endif
 	spin_unlock(&sgx_free_list_lock);
 }

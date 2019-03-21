@@ -17,3 +17,4 @@ void flip_parent_is_split(uint16_t index, uint16_t tree_index);
 struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size);
 void sgx_free_page_buddy(struct sgx_epc_page *entry);
 struct sgx_epc_page *find_page_with_pa(unsigned long addr, int8_t order);
+void print_free_list_count(void);

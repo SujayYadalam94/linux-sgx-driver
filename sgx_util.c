@@ -113,7 +113,7 @@ struct page *sgx_get_backing(struct sgx_encl *encl,
 		else
 			unlock_page(page);
 
-		pr_info("intel_sgx: %s Compound order=%d\n", __func__, compound_order(page)); //YSSU
+		//pr_info("intel_sgx: %s Compound order=%d\n", __func__, compound_order(page)); //YSSU
 		return page;
 	}
 

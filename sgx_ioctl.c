@@ -132,6 +132,8 @@ static long sgx_ioc_enclave_create(struct file *filep, unsigned int cmd,
 	ret = sgx_encl_create(secs);
 
 	kfree(secs);
+
+	print_free_list_count();
 	return ret;
 }
 
@@ -212,6 +214,7 @@ out:
 		kunmap(data_page);
 		__free_page(data_page);
 	}
+
 	return ret;
 }
 

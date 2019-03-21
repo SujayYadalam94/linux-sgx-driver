@@ -5,13 +5,17 @@
 uint8_t page_is_split[47][(1 << (LIST_COUNT-1))-1];
 extern unsigned long epc_start_addr;
 struct list_head sgx_free_lists[LIST_COUNT];
+uint sgx_free_lists_count[LIST_COUNT];
 
 /* YSSU: Initialize all the free lists required for buddy */
 void sgx_init_free_lists(void)
 {
 	int8_t order;
 	for(order = 0; order < LIST_COUNT; order++)
+	{
 	 	INIT_LIST_HEAD(&sgx_free_lists[order]);
+		sgx_free_lists_count[order] = 0;
+	}
 }
 
 /*
@@ -62,7 +66,7 @@ struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size)
 	required_order = page_size ? 0 : (LIST_COUNT-1);
 	order = required_order;
 
-	pr_info("%s: required_order=%d\n", __func__, required_order);
+	//pr_info("%s: required_order=%d\n", __func__, required_order);
 
 	while(order+1 != 0)
 	{
@@ -72,13 +76,12 @@ struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size)
      */
 		if(!list_empty(&sgx_free_lists[order]))
 		{
-			pr_info("%s: order=%d\n", __func__, order);
+			//pr_info("%s: order=%d\n", __func__, order);
 			entry = list_first_entry(&sgx_free_lists[order],struct sgx_epc_page,list);
 			if(!entry)
 				pr_info("Unable to get the entry from the list\n");
-			else if(entry->list.next == NULL || entry->list.prev == NULL)
-				pr_info("Only the the list pointer is NULL\n");
 			list_del(&entry->list);
+			sgx_free_lists_count[order]--;
 		}
 		else
     {
@@ -116,6 +119,7 @@ struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size)
       new_epc_page->page_size = (1 << (LARGE_PAGE_LOG2 - order));
 
 			list_add_tail(&new_epc_page->list, &sgx_free_lists[order]);
+			sgx_free_lists_count[order]++;
 		}
 
 		/*
@@ -127,6 +131,7 @@ struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size)
 	}
 
 	pr_info("intel sgx: Buddy cannot allocate a page\n");
+
 	return NULL;
 }
 
@@ -177,6 +182,7 @@ void sgx_free_page_buddy(struct sgx_epc_page *entry) {
 
     list_del(&epc_page->list);
 		kfree(epc_page);
+		sgx_free_lists_count[order]--;
 
     index = (index - 1) / 2;
     order--;
@@ -186,6 +192,7 @@ void sgx_free_page_buddy(struct sgx_epc_page *entry) {
 	entry->page_size = 1 << (LARGE_PAGE_LOG2 - order);
 
   list_add_tail(&entry->list, &sgx_free_lists[order]);
+	sgx_free_lists_count[order]++;
 }
 
 struct sgx_epc_page *find_page_with_pa(unsigned long addr, int8_t order)
@@ -197,4 +204,11 @@ struct sgx_epc_page *find_page_with_pa(unsigned long addr, int8_t order)
         return find_epc_page;
   }
   return NULL;
+}
+
+void print_free_list_count()
+{
+	int8_t order;
+	for(order = 0; order < LIST_COUNT; order++)
+		pr_info("intel sgx: %d order list has %u pages", order, sgx_free_lists_count[order]);
 }

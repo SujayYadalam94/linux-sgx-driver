@@ -76,7 +76,8 @@
 static LIST_HEAD(sgx_free_list);
 static LIST_HEAD(sgx_free_lp_list); //YSSU
 extern struct list_head sgx_free_lists[LIST_COUNT]; //YSSU: for buddy
-//static DEFINE_SPINLOCK(sgx_free_list_lock);
+extern uint sgx_free_lists_count[LIST_COUNT];
+
 spinlock_t sgx_free_list_lock = __SPIN_LOCK_UNLOCKED(sgx_free_list_lock);
 
 LIST_HEAD(sgx_tgid_ctx_list);
@@ -429,6 +430,7 @@ int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 		//YSSU: add 2M pages to 0 order list
 		spin_lock(&sgx_free_list_lock);
 		list_add_tail(&new_epc_page->list, &sgx_free_lists[0]);
+		sgx_free_lists_count[0]++;
 		sgx_nr_lp_pages++;
 		sgx_nr_free_pages += 512;
 		sgx_nr_total_epc_pages += 512;
@@ -446,6 +448,7 @@ err_freelist:
 			list_del(&entry->list);
 			spin_unlock(&sgx_free_list_lock);
 			kfree(entry);
+			sgx_free_lists_count[0]--;
 		}
 		return -ENOMEM;
 }
@@ -660,10 +663,7 @@ struct sgx_epc_page *sgx_alloc_lp_page(unsigned int flags)
 	for ( ; ; ) {
 		entry = sgx_alloc_lp_page_fast();
 		if (entry)
-		{
-			pr_info("Large page allotted\n");
 			break;
-		}
 		else
 			return ERR_PTR(-ENOMEM);
 	}

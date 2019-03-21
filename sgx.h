@@ -82,7 +82,7 @@
 
 #define LARGE_PAGE_SIZE (512*PAGE_SIZE) //YSSU
 
-//#define BUDDY //swap between buddy and fixed partitioning
+#define BUDDY //swap between buddy and fixed partitioning
 
 struct sgx_epc_page {
 	resource_size_t	pa;

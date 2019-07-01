@@ -91,7 +91,7 @@ static unsigned int sgx_nr_lp_pages=0;
 static struct task_struct *ksgxswapd_tsk;
 static DECLARE_WAIT_QUEUE_HEAD(ksgxswapd_waitq);
 extern uint8_t page_is_split[47][(1 << (LIST_COUNT-1))-1];
-
+extern pmd_t* (*mm_alloc_pmd_p)(struct mm_struct *mm, unsigned long address);
 
 static int sgx_test_and_clear_young_cb(pte_t *ptep, pgtable_t token,
 				       unsigned long addr, void *data)
@@ -107,6 +107,32 @@ static int sgx_test_and_clear_young_cb(pte_t *ptep, pgtable_t token,
 
 	return ret;
 }
+
+/**
+ * YSSU: apply_to_large_page()
+ */
+int apply_to_large_page(struct mm_struct *mm, unsigned long addr) {
+	pmd_t *pmdp;
+	pmd_t pmd;
+	spinlock_t *ptl;
+	int ret;
+
+	pmdp = mm_alloc_pmd_p(mm, addr);
+	if(!pmdp)
+		return -ENOMEM;
+
+	ptl = pmd_lock(mm, pmdp);
+
+	ret = pmd_young(*pmdp);
+	if(ret) {
+		pmd = pmd_mkold(*pmdp);
+		set_pmd_at(mm, addr, pmdp, pmd);
+	}
+
+	spin_unlock(ptl);
+	return ret;
+}
+
 
 /**
  * sgx_test_and_clear_young() - Test and reset the accessed bit
@@ -128,6 +154,10 @@ int sgx_test_and_clear_young(struct sgx_encl_page *page, struct sgx_encl *encl)
 
 	if (encl != vma->vm_private_data)
 		return 0;
+
+	if(page->page_size == LARGE_PAGE_SIZE) {
+
+	}
 
 	return apply_to_page_range(vma->vm_mm, page->addr, PAGE_SIZE,
 				   sgx_test_and_clear_young_cb, vma->vm_mm);
@@ -315,7 +345,6 @@ static void sgx_evict_page(struct sgx_encl_page *entry,
 			   struct sgx_encl *encl)
 {
 	sgx_ewb(encl, entry);
-	pr_info("7");
 	sgx_free_page(entry->epc_page, encl);
 	entry->epc_page = NULL;
 	entry->flags &= ~SGX_ENCL_PAGE_RESERVED;
@@ -351,7 +380,6 @@ static void sgx_write_pages(struct sgx_encl *encl, struct list_head *src)
 	while (!list_empty(src)) {
 		entry = list_first_entry(src, struct sgx_epc_page, list);
 		list_del(&entry->list);
-		pr_info("1");
 		sgx_evict_page(entry->encl_page, encl);
 		encl->secs_child_cnt--;
 	}
@@ -436,9 +464,25 @@ int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 		sgx_nr_total_epc_pages += 512;
 		spin_unlock(&sgx_free_list_lock);
 	}
+
+	for( ;i < size; i += PAGE_SIZE) {
+		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
+		if (!new_epc_page)
+			goto err_freelist;
+		new_epc_page->pa = (start + i) | bank;
+		new_epc_page->page_size = PAGE_SIZE;
+
+		spin_lock(&sgx_free_list_lock);
+		list_add_tail(&new_epc_page->list, &sgx_free_lists[LIST_COUNT-1]);
+		sgx_free_lists_count[LIST_COUNT-1]++;
+		sgx_nr_total_epc_pages++;
+		sgx_nr_free_pages++;
+		spin_unlock(&sgx_free_list_lock);
+	}
 	//YSSU: allocate memory for page_is_split bit structure
   //page_is_split[0] = (uint8_t *) kzalloc(sgx_nr_lp_pages*(1<<(LIST_COUNT-1))*sizeof(uint8_t), GFP_KERNEL);
 	pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_lp_pages);
+	pr_info("intel sgx: %s: %d 4K pages initialized\n", __func__, sgx_free_lists_count[LIST_COUNT-1]);
 	return 0;
 
 err_freelist:
@@ -449,6 +493,14 @@ err_freelist:
 			spin_unlock(&sgx_free_list_lock);
 			kfree(entry);
 			sgx_free_lists_count[0]--;
+		}
+		list_for_each_safe(parser, temp, &sgx_free_lists[LIST_COUNT-1]) {
+			spin_lock(&sgx_free_list_lock);
+			entry = list_entry(parser, struct sgx_epc_page, list);
+			list_del(&entry->list);
+			spin_unlock(&sgx_free_list_lock);
+			kfree(entry);
+			sgx_free_lists_count[LIST_COUNT-1]--;
 		}
 		return -ENOMEM;
 }
@@ -533,6 +585,12 @@ int sgx_page_cache_init(void)
 	tmp = kthread_run(ksgxswapd, NULL, "ksgxswapd");
 	if (!IS_ERR(tmp))
 		ksgxswapd_tsk = tmp;
+
+	//YSSU
+	mm_alloc_pmd_p = (void *)kallsyms_lookup_name("mm_alloc_pmd");
+	if(mm_alloc_pmd_p == NULL)
+		return -EINVAL;
+
 	return PTR_ERR_OR_ZERO(tmp);
 }
 
@@ -541,11 +599,13 @@ void sgx_page_cache_teardown(void)
 	struct sgx_epc_page *entry;
 	struct list_head *parser, *temp;
 
+	int8_t order; //YSSU
+
 	if (ksgxswapd_tsk) {
 		kthread_stop(ksgxswapd_tsk);
 		ksgxswapd_tsk = NULL;
 	}
-
+#ifndef BUDDY
 	spin_lock(&sgx_free_list_lock);
 	list_for_each_safe(parser, temp, &sgx_free_list) {
 		entry = list_entry(parser, struct sgx_epc_page, list);
@@ -559,6 +619,17 @@ void sgx_page_cache_teardown(void)
 		kfree(entry);
 	}
 	spin_unlock(&sgx_free_list_lock);
+#else //YSSU
+	spin_lock(&sgx_free_list_lock);
+	for(order = 0; order < LIST_COUNT; order++) {
+		list_for_each_safe(parser, temp, &sgx_free_lists[order]) {
+			entry = list_entry(parser, struct sgx_epc_page, list);
+			list_del(&entry->list);
+			kfree(entry);
+		}
+	}
+	spin_unlock(&sgx_free_list_lock);
+#endif
 }
 
 static struct sgx_epc_page *sgx_alloc_page_fast(void)
@@ -575,8 +646,8 @@ static struct sgx_epc_page *sgx_alloc_page_fast(void)
 	}
 #else
 	entry = sgx_alloc_page_buddy(0);
-	//if(entry)
-	//	pr_info("intel sgx: %s: page allocated: 0x%lx size:0x%x \n", __func__, entry->pa, entry->page_size);
+	if(entry)
+		sgx_nr_free_pages--;
 #endif
 	spin_unlock(&sgx_free_list_lock);
 
@@ -603,6 +674,7 @@ static struct sgx_epc_page *sgx_alloc_lp_page_fast(void)
 	{
 		sgx_nr_lp_pages--;
 		sgx_nr_free_pages -= 512;
+		sgx_nr_total_epc_pages -= 512;
 	}
 #endif
 
@@ -630,6 +702,12 @@ struct sgx_epc_page *sgx_alloc_page(unsigned int flags)
 		entry = sgx_alloc_page_fast();
 		if (entry)
 			break;
+		/* This is to avoid swapping as of now */
+		else
+		{
+				pr_info("intel_sgx: cannot allocate pages \n");
+				return ERR_PTR(-ENOMEM);
+		}
 		/* We need at minimum two pages for the #PF handler. */
 		if (atomic_read(&sgx_va_pages_cnt) >
 		    (sgx_nr_total_epc_pages - 2))
@@ -710,6 +788,7 @@ void sgx_free_page(struct sgx_epc_page *entry, struct sgx_encl *encl)
 #else
 	sgx_free_page_buddy(entry);
 	sgx_nr_free_pages += (entry->page_size / PAGE_SIZE);
+	sgx_nr_total_epc_pages += (entry->page_size / PAGE_SIZE);
 #endif
 	spin_unlock(&sgx_free_list_lock);
 }

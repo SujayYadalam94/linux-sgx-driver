@@ -133,7 +133,8 @@ static long sgx_ioc_enclave_create(struct file *filep, unsigned int cmd,
 
 	kfree(secs);
 
-	print_free_list_count();
+	/* Print the list of free pages before creation of an enclave. */
+	//print_free_list_count();
 	return ret;
 }
 
@@ -175,7 +176,7 @@ static long sgx_ioc_enclave_add_page(struct file *filep, unsigned int cmd,
 	//YSSU
 	if(addp->large_page)
 	{
-		pr_info("intel_sgx: large page request received.\n");
+//		pr_info("intel_sgx: large page request received.\n");
 		data = (void *)kmalloc(LARGE_PAGE_SIZE, GFP_HIGHUSER);
 		if(data == NULL)
 		{

@@ -63,9 +63,6 @@ int insert_pmd(struct vm_area_struct *vma, unsigned long addr,
 
         retval = -ENOMEM;
 
-       	mm_alloc_pmd_p = (void *)kallsyms_lookup_name("mm_alloc_pmd");
-       	if(mm_alloc_pmd_p == NULL)
-       		return retval;
         pmd = mm_alloc_pmd_p(mm, addr);
         if (!pmd)
         	return retval;
@@ -108,7 +105,7 @@ out_mkwrite:
 
         set_pmd_at(mm, addr, pmd, entry);
         update_mmu_cache_pmd(vma, addr, pmd);
-				pr_info("PMD entry contents: 0x%lx\n", entry.pmd);
+//		pr_info("PMD entry contents: 0x%lx\n", entry.pmd);
         retval = 0;
 out_unlock:
         spin_unlock(ptl);

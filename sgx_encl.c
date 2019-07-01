@@ -309,7 +309,7 @@ static bool sgx_process_add_page_req(struct sgx_add_page_req *req,
 	epc_page->encl_page = encl_page;
 	encl_page->epc_page = epc_page;
 	if(encl_page->page_size != LARGE_PAGE_SIZE)
-		sgx_test_and_clear_young(encl_page, encl); //YSSU: commenting out for now
+		sgx_test_and_clear_young(encl_page, encl);
 	list_add_tail(&epc_page->list, &encl->load_list);
 
 	return true;
@@ -345,8 +345,8 @@ static void sgx_add_page_worker(struct work_struct *work)
 		if(req->encl_page->page_size == LARGE_PAGE_SIZE)
 		{
 			epc_page = sgx_alloc_lp_page(0);
-			if(epc_page)
-				pr_info("large page addr=0x%lx\n", (unsigned long)epc_page->pa);
+//			if(epc_page)
+//				pr_info("large page addr=0x%lx\n", (unsigned long)epc_page->pa);
 		}
 		else
 			epc_page = sgx_alloc_page(0);

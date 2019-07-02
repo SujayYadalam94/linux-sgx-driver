@@ -156,7 +156,7 @@ int sgx_test_and_clear_young(struct sgx_encl_page *page, struct sgx_encl *encl)
 		return 0;
 
 	if(page->page_size == LARGE_PAGE_SIZE) {
-
+			return apply_to_large_page(vma->vm_mm, page->addr);
 	}
 
 	return apply_to_page_range(vma->vm_mm, page->addr, PAGE_SIZE,
@@ -254,16 +254,14 @@ static void sgx_isolate_pages(struct sgx_encl *encl,
 		entry = list_first_entry(&encl->load_list,
 					 struct sgx_epc_page,
 					 list);
-	if(entry->encl_page->page_size != LARGE_PAGE_SIZE) //YSSU
-	{
+
 		if (!sgx_test_and_clear_young(entry->encl_page, encl) &&
-		    !(entry->encl_page->flags & SGX_ENCL_PAGE_RESERVED)) {
-			entry->encl_page->flags |= SGX_ENCL_PAGE_RESERVED;
-			list_move_tail(&entry->list, dst);
+	  	!(entry->encl_page->flags & SGX_ENCL_PAGE_RESERVED)) {
+				entry->encl_page->flags |= SGX_ENCL_PAGE_RESERVED;
+				list_move_tail(&entry->list, dst);
 		} else {
-			list_move_tail(&entry->list, &encl->load_list);
+		list_move_tail(&entry->list, &encl->load_list);
 		}
-	}
 	}
 out:
 	mutex_unlock(&encl->lock);

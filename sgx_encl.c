@@ -342,11 +342,7 @@ static void sgx_add_page_worker(struct work_struct *work)
 
 		//YSSU
 		if(req->encl_page->page_size == LARGE_PAGE_SIZE)
-		{
 			epc_page = sgx_alloc_lp_page(0);
-//			if(epc_page)
-//				pr_info("large page addr=0x%lx\n", (unsigned long)epc_page->pa);
-		}
 		else
 			epc_page = sgx_alloc_page(0);
 		if (IS_ERR(epc_page)) {
@@ -515,7 +511,11 @@ static int sgx_init_page(struct sgx_encl *encl, struct sgx_encl_page *entry,
 			return -EFAULT;
 		}
 
-		atomic_inc(&sgx_va_pages_cnt);
+		//YSSU: For large pages, we need to increment the count by 512
+		if(entry->page_size == LARGE_PAGE_SIZE)
+			atomic_set(&sgx_va_pages_cnt, atomic_read(&sgx_va_pages_cnt)+512);
+		else
+			atomic_inc(&sgx_va_pages_cnt);
 
 		va_page->epc_page = epc_page;
 		va_offset = sgx_alloc_va_slot(va_page);
@@ -1028,10 +1028,14 @@ void sgx_encl_release(struct kref *ref)
 	while (!list_empty(&encl->va_pages)) {
 		va_page = list_first_entry(&encl->va_pages,
 					   struct sgx_va_page, list);
+		//YSSU: When removing a large page, decrement va count by 512.
+		if(va_page->epc_page->page_size == LARGE_PAGE_SIZE)
+			atomic_set(&sgx_va_pages_cnt, atomic_read(&sgx_va_pages_cnt)-512);
+		else
+			atomic_dec(&sgx_va_pages_cnt);
 		list_del(&va_page->list);
 		sgx_free_page(va_page->epc_page, encl);
 		kfree(va_page);
-		atomic_dec(&sgx_va_pages_cnt);
 	}
 
 	if (encl->secs.epc_page)

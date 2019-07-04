@@ -26,7 +26,7 @@ unsigned long ptr_for_index(int8_t order, uint16_t index,
   uint16_t tree_index)
 {
   return  epc_start_addr + (tree_index * LARGE_PAGE_SIZE) +
-    ((index - (1 << order) + 1) << (LARGE_PAGE_LOG2 - order));
+    ((index - (1 << order) + 1) << (LARGE_PAGE_SHIFT - order));
 }
 
 /*
@@ -40,7 +40,7 @@ void index_for_ptr(unsigned long ptr, int8_t order,
 
   *tree_index = (ptr - epc_start_addr) / LARGE_PAGE_SIZE;
   tree_base_ptr = epc_start_addr + (*tree_index * LARGE_PAGE_SIZE);
-  *index = ((ptr - tree_base_ptr) >> (LARGE_PAGE_LOG2 - order)) +
+  *index = ((ptr - tree_base_ptr) >> (LARGE_PAGE_SHIFT - order)) +
     (1 << order) - 1;
 }
 
@@ -116,7 +116,7 @@ struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size)
 				return NULL;
 			}
       new_epc_page->pa = ptr_for_index(order, index+1, tree_index);
-      new_epc_page->page_size = (1 << (LARGE_PAGE_LOG2 - order));
+      new_epc_page->page_size = (1 << (LARGE_PAGE_SHIFT - order));
 
 			list_add_tail(&new_epc_page->list, &sgx_free_lists[order]);
 			sgx_free_lists_count[order]++;
@@ -126,7 +126,7 @@ struct sgx_epc_page *sgx_alloc_page_buddy(unsigned int page_size)
 		 * Workaround for when I break a 2MB page to get a 4KB page. We have to set
 		 * the override the size to 4KB because we are not creating a new struct.
 		 */
-		entry->page_size = 1 << (LARGE_PAGE_LOG2 - required_order);
+		entry->page_size = 1 << (LARGE_PAGE_SHIFT - required_order);
 		return entry;
 	}
 
@@ -189,7 +189,7 @@ void sgx_free_page_buddy(struct sgx_epc_page *entry) {
   }
 
 	entry->pa = ptr_for_index(order, index, tree_index);
-	entry->page_size = 1 << (LARGE_PAGE_LOG2 - order);
+	entry->page_size = 1 << (LARGE_PAGE_SHIFT - order);
 
   list_add_tail(&entry->list, &sgx_free_lists[order]);
 	sgx_free_lists_count[order]++;

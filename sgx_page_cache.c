@@ -367,7 +367,6 @@ static void sgx_write_pages(struct sgx_encl *encl, struct list_head *src)
 		ret = sgx_encl_find(encl->mm, entry->encl_page->addr, &vma);
 		if (!ret && encl == vma->vm_private_data)
 			sgx_zap_vma_ptes(vma, entry->encl_page->addr, entry->encl_page->page_size); //YSSU
-
 		sgx_eblock(encl, entry);
 	}
 
@@ -395,6 +394,8 @@ static void sgx_swap_pages(unsigned long nr_to_scan)
 	struct sgx_tgid_ctx *ctx;
 	struct sgx_encl *encl;
 	LIST_HEAD(cluster);
+
+	pr_info("%s\n",__func__);
 
 	ctx = sgx_isolate_tgid_ctx(nr_to_scan);
 	if (!ctx)
@@ -704,7 +705,7 @@ struct sgx_epc_page *sgx_alloc_page(unsigned int flags)
 		else
 		{
 				pr_info("intel_sgx: cannot allocate pages \n");
-				return ERR_PTR(-ENOMEM);
+				//return ERR_PTR(-ENOMEM);
 		}
 		/* We need at minimum two pages for the #PF handler. */
 		if (atomic_read(&sgx_va_pages_cnt) >

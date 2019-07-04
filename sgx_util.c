@@ -250,6 +250,8 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	bool reserve = (flags & SGX_FAULT_RESERVE) != 0;
 	int rc = 0;
 
+	pr_info("%s: Fault occurred. flags=0x%x\n", __func__, flags); //YSSU
+
 	/* If process was forked, VMA is still there but vm_private_data is set
 	 * to NULL.
 	 */
@@ -259,6 +261,12 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	mutex_lock(&encl->lock);
 
 	entry = radix_tree_lookup(&encl->page_tree, addr >> PAGE_SHIFT);
+	/* For large pages, we need to find the entry corresponding to the
+	 * first page which has a pointer to the epc_page.
+	 */
+	if (entry->page_size == 0) {
+		entry = radix_tree_lookup(&encl->page_tree, addr >> LARGE_PAGE_SHIFT);
+	}
 	if (!entry) {
 		rc = -EFAULT;
 		goto out;
@@ -295,6 +303,7 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 		epc_page = NULL;
 		goto out;
 	}
+	pr_info("%s: EPC page requested.\n", __func__); //YSSU
 
 	/* If SECS is evicted then reload it first */
 	if (encl->flags & SGX_ENCL_SECS_EVICTED) {
@@ -319,7 +328,7 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	rc = sgx_eldu(encl, entry, epc_page, false /* is_secs */);
 	if (rc)
 		goto out;
-
+		pr_info("%s: ELDU executed.\n", __func__); //YSSU
 	/* Track the EPC page even if vm_insert_pfn fails; we need to ensure
 	 * the EPC page is properly freed and we can't do EREMOVE right away
 	 * because EREMOVE may fail due to an active cpu in the enclave.  We

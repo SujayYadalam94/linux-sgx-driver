@@ -1,11 +1,7 @@
 #include "sgx.h"
 
 /*YSSU: For buddy */
-#define NORMAL_PAGE_LOG2 12
-#define NORMAL_PAGE (1 << NORMAL_PAGE_LOG2)
-#define LARGE_PAGE_LOG2 21
-#define LARGE_PAGE (1 << LARGE_PAGE_LOG2)
-#define LIST_COUNT (LARGE_PAGE_LOG2 - NORMAL_PAGE_LOG2 +1)
+#define LIST_COUNT (LARGE_PAGE_SHIFT - PAGE_SHIFT +1)
 
 void sgx_init_free_lists(void);
 unsigned long ptr_for_index(int8_t order, uint16_t index,

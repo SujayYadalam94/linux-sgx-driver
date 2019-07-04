@@ -81,6 +81,7 @@
 #define SGX_VA_SLOT_COUNT 512
 
 #define LARGE_PAGE_SIZE (512*PAGE_SIZE) //YSSU
+#define LARGE_PAGE_SHIFT	21 //YSSU
 
 #define BUDDY //swap between buddy and fixed partitioning
 

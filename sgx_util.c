@@ -250,8 +250,6 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	bool reserve = (flags & SGX_FAULT_RESERVE) != 0;
 	int rc = 0;
 
-	pr_info("%s: Fault occurred. flags=0x%x\n", __func__, flags); //YSSU
-
 	/* If process was forked, VMA is still there but vm_private_data is set
 	 * to NULL.
 	 */
@@ -303,7 +301,6 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 		epc_page = NULL;
 		goto out;
 	}
-	pr_info("%s: EPC page requested.\n", __func__); //YSSU
 
 	/* If SECS is evicted then reload it first */
 	if (encl->flags & SGX_ENCL_SECS_EVICTED) {

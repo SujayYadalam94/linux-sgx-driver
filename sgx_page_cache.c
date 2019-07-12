@@ -702,11 +702,11 @@ struct sgx_epc_page *sgx_alloc_page(unsigned int flags)
 		if (entry)
 			break;
 		/* This is to avoid swapping as of now */
-		else
-		{
-				pr_info("intel_sgx: cannot allocate pages \n");
+		// else
+		// {
+				// pr_info("intel_sgx: cannot allocate pages \n");
 				//return ERR_PTR(-ENOMEM);
-		}
+		// }
 		/* We need at minimum two pages for the #PF handler. */
 		if (atomic_read(&sgx_va_pages_cnt) >
 		    (sgx_nr_total_epc_pages - 2))

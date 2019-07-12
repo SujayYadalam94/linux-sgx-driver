@@ -141,6 +141,7 @@ unsigned long sgx_zap_pmd_range(struct mmu_gather *tlb,
 {
 	pmd_t *pmd;
 	unsigned long next;
+	int tries = 0;
 
 	pmd = pmd_offset(pud, addr);
 	do {
@@ -156,7 +157,7 @@ unsigned long sgx_zap_pmd_range(struct mmu_gather *tlb,
 			zap_pte_range_p = (void *)kallsyms_lookup_name("zap_pte_range");
 		if(zap_pte_range_p == NULL)
 		{
-			//pr_err("intel_sgx: %s zap_pte_range symbol not found\n", __func__);
+			// pr_err("intel_sgx: zap_pte_range symbol not found\n");
 			return addr;
 		}
 		next = zap_pte_range_p(tlb, vma, pmd, addr, next, NULL);
@@ -180,6 +181,7 @@ unsigned long sgx_zap_pud_range(struct mmu_gather *tlb,
 		if (pud_none(*pud))
 			continue;
 		next = sgx_zap_pmd_range(tlb, vma, pud, addr, next);
+		cond_resched();
 	} while (pud++, addr = next, addr != end);
 
 	return addr;
@@ -236,7 +238,8 @@ void sgx_unmap_single_vma(struct mmu_gather *tlb,
 	if (end <= vma->vm_start)
 		return;
 
-	sgx_unmap_page_range(tlb, vma, start, end);
+	if(start != end)
+		sgx_unmap_page_range(tlb, vma, start, end);
 }
 
 void sgx_zap_page_range_single(struct vm_area_struct *vma, unsigned long address,
@@ -255,7 +258,10 @@ void sgx_zap_page_range_single(struct vm_area_struct *vma, unsigned long address
 	}
 
 	tlb_gather_mmu_p(&tlb, mm, address, end);
+	update_hiwater_rss(mm);
+	mmu_notifier_invalidate_range_start(mm, address, end);
 	sgx_unmap_single_vma(&tlb, vma, address, end);
+	mmu_notifier_invalidate_range_end(mm, address, end);
 	tlb_finish_mmu_p(&tlb, address, end);
 }
 

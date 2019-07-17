@@ -795,8 +795,6 @@ static int __sgx_encl_add_page(struct sgx_encl *encl,
 	int ret;
 	int empty;
 	void *backing_ptr;
-	int i; //YSSU
-	struct sgx_encl_page *dummy_page;
 
 	if (sgx_validate_secinfo(secinfo))
 		return -EINVAL;
@@ -837,24 +835,11 @@ static int __sgx_encl_add_page(struct sgx_encl *encl,
 		goto out;
 	}
 
-	/*
-	 * YSSU: Add 512 addresses at 4k granularity in case of large page.
-	 * Only for the first entry, the entry is populated with encl_page,
-	 * for the rest it is dummy_page.
-	 */
-	for(i=0; i < encl_page->page_size; i += PAGE_SIZE) {
-		if(i!=0) {
-			dummy_page = kzalloc(sizeof(*dummy_page), GFP_KERNEL);
-			dummy_page->addr = encl_page->addr + i;
-			dummy_page->page_size = 0;
-		}
-		ret = radix_tree_insert(&encl->page_tree,
-				i==0?(encl_page->addr + i) >> PAGE_SHIFT:(dummy_page->addr + i) >> PAGE_SHIFT,
-				i==0?encl_page:dummy_page);
-		if (ret) {
-			sgx_put_backing(backing, false /* write */);
-			goto out;
-		}
+	ret = radix_tree_insert(&encl->page_tree, encl_page->addr >> PAGE_SHIFT,
+				encl_page);
+	if (ret) {
+		sgx_put_backing(backing, false /* write */);
+		goto out;
 	}
 
 	backing_ptr = kmap(backing);

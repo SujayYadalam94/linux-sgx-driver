@@ -64,14 +64,14 @@
 #include <linux/kthread.h>
 #include <linux/ratelimit.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
-	#include <linux/sched/signal.h>
+    #include <linux/sched/signal.h>
 #else
-	#include <linux/signal.h>
+    #include <linux/signal.h>
 #endif
 #include <linux/slab.h>
 
 #define SGX_NR_LOW_EPC_PAGES_DEFAULT 32
-#define SGX_NR_SWAP_CLUSTER_MAX	16
+#define SGX_NR_SWAP_CLUSTER_MAX 16
 
 static LIST_HEAD(sgx_free_list);
 static LIST_HEAD(sgx_free_lp_list); //YSSU
@@ -94,50 +94,51 @@ extern uint8_t page_is_split[47][(1 << (LIST_COUNT-1))-1];
 extern pmd_t* (*mm_alloc_pmd_p)(struct mm_struct *mm, unsigned long address);
 
 static int sgx_test_and_clear_young_cb(pte_t *ptep, pgtable_t token,
-				       unsigned long addr, void *data)
+                       unsigned long addr, void *data)
 {
-	pte_t pte;
-	int ret;
+    pte_t pte;
+    int ret;
 
-	ret = pte_young(*ptep);
-	if (ret) {
-		pte = pte_mkold(*ptep);
-		set_pte_at((struct mm_struct *)data, addr, ptep, pte);
-	}
+    ret = pte_young(*ptep);
+    if (ret) {
+        pte = pte_mkold(*ptep);
+        set_pte_at((struct mm_struct *)data, addr, ptep, pte);
+    }
 
-	return ret;
+    return ret;
 }
 
 /**
  * YSSU: apply_to_large_page()
  */
-int apply_to_large_page(struct mm_struct *mm, unsigned long addr) {
-	pmd_t *pmdp;
-	pmd_t pmd;
-	spinlock_t *ptl;
-	int ret;
+int apply_to_large_page(struct mm_struct *mm, unsigned long addr)
+{
+    pmd_t *pmdp;
+    pmd_t pmd;
+    spinlock_t *ptl;
+    int ret;
 
-	pmdp = mm_alloc_pmd_p(mm, addr);
-	if(!pmdp)
-		return -ENOMEM;
+    pmdp = mm_alloc_pmd_p(mm, addr);
+    if(!pmdp)
+        return -ENOMEM;
 
-	ptl = pmd_lock(mm, pmdp);
+    ptl = pmd_lock(mm, pmdp);
 
-	ret = pmd_young(*pmdp);
-	if(ret) {
-		pmd = pmd_mkold(*pmdp);
-		set_pmd_at(mm, addr, pmdp, pmd);
-	}
+    ret = pmd_young(*pmdp);
+    if(ret) {
+        pmd = pmd_mkold(*pmdp);
+        set_pmd_at(mm, addr, pmdp, pmd);
+    }
 
-	spin_unlock(ptl);
-	return ret;
+    spin_unlock(ptl);
+    return ret;
 }
 
 
 /**
  * sgx_test_and_clear_young() - Test and reset the accessed bit
- * @page:	enclave EPC page to be tested for recent access
- * @encl:	enclave which owns @page
+ * @page:   enclave EPC page to be tested for recent access
+ * @encl:   enclave which owns @page
  *
  * Checks the Access (A) bit from the PTE corresponding to the
  * enclave page and clears it.  Returns 1 if the page has been
@@ -145,294 +146,294 @@ int apply_to_large_page(struct mm_struct *mm, unsigned long addr) {
  */
 int sgx_test_and_clear_young(struct sgx_encl_page *page, struct sgx_encl *encl)
 {
-	struct vm_area_struct *vma;
-	int ret;
+    struct vm_area_struct *vma;
+    int ret;
 
-	ret = sgx_encl_find(encl->mm, page->addr, &vma);
-	if (ret)
-		return 0;
+    ret = sgx_encl_find(encl->mm, page->addr, &vma);
+    if (ret)
+        return 0;
 
-	if (encl != vma->vm_private_data)
-		return 0;
+    if (encl != vma->vm_private_data)
+        return 0;
 
-	if(page->page_size == LARGE_PAGE_SIZE) {
-			return apply_to_large_page(vma->vm_mm, page->addr);
-	}
+    if(page->page_size == LARGE_PAGE_SIZE) {
+            return apply_to_large_page(vma->vm_mm, page->addr);
+    }
 
-	return apply_to_page_range(vma->vm_mm, page->addr, PAGE_SIZE,
-				   sgx_test_and_clear_young_cb, vma->vm_mm);
+    return apply_to_page_range(vma->vm_mm, page->addr, PAGE_SIZE,
+                   sgx_test_and_clear_young_cb, vma->vm_mm);
 }
 
 static struct sgx_tgid_ctx *sgx_isolate_tgid_ctx(unsigned long nr_to_scan)
 {
-	struct sgx_tgid_ctx *ctx = NULL;
-	int i;
+    struct sgx_tgid_ctx *ctx = NULL;
+    int i;
 
-	mutex_lock(&sgx_tgid_ctx_mutex);
+    mutex_lock(&sgx_tgid_ctx_mutex);
 
-	if (list_empty(&sgx_tgid_ctx_list)) {
-		mutex_unlock(&sgx_tgid_ctx_mutex);
-		return NULL;
-	}
+    if (list_empty(&sgx_tgid_ctx_list)) {
+        mutex_unlock(&sgx_tgid_ctx_mutex);
+        return NULL;
+    }
 
-	for (i = 0; i < nr_to_scan; i++) {
-		/* Peek TGID context from the head. */
-		ctx = list_first_entry(&sgx_tgid_ctx_list,
-				       struct sgx_tgid_ctx,
-				       list);
+    for (i = 0; i < nr_to_scan; i++) {
+        /* Peek TGID context from the head. */
+        ctx = list_first_entry(&sgx_tgid_ctx_list,
+                       struct sgx_tgid_ctx,
+                       list);
 
-		/* Move to the tail so that we do not encounter it in the
-		 * next iteration.
-		 */
-		list_move_tail(&ctx->list, &sgx_tgid_ctx_list);
+        /* Move to the tail so that we do not encounter it in the
+         * next iteration.
+         */
+        list_move_tail(&ctx->list, &sgx_tgid_ctx_list);
 
-		/* Non-empty TGID context? */
-		if (!list_empty(&ctx->encl_list) &&
-		    kref_get_unless_zero(&ctx->refcount))
-			break;
+        /* Non-empty TGID context? */
+        if (!list_empty(&ctx->encl_list) &&
+            kref_get_unless_zero(&ctx->refcount))
+            break;
 
-		ctx = NULL;
-	}
+        ctx = NULL;
+    }
 
-	mutex_unlock(&sgx_tgid_ctx_mutex);
+    mutex_unlock(&sgx_tgid_ctx_mutex);
 
-	return ctx;
+    return ctx;
 }
 
 static struct sgx_encl *sgx_isolate_encl(struct sgx_tgid_ctx *ctx,
-					       unsigned long nr_to_scan)
+                           unsigned long nr_to_scan)
 {
-	struct sgx_encl *encl = NULL;
-	int i;
+    struct sgx_encl *encl = NULL;
+    int i;
 
-	mutex_lock(&sgx_tgid_ctx_mutex);
+    mutex_lock(&sgx_tgid_ctx_mutex);
 
-	if (list_empty(&ctx->encl_list)) {
-		mutex_unlock(&sgx_tgid_ctx_mutex);
-		return NULL;
-	}
+    if (list_empty(&ctx->encl_list)) {
+        mutex_unlock(&sgx_tgid_ctx_mutex);
+        return NULL;
+    }
 
-	for (i = 0; i < nr_to_scan; i++) {
-		/* Peek encl from the head. */
-		encl = list_first_entry(&ctx->encl_list, struct sgx_encl,
-					encl_list);
+    for (i = 0; i < nr_to_scan; i++) {
+        /* Peek encl from the head. */
+        encl = list_first_entry(&ctx->encl_list, struct sgx_encl,
+                    encl_list);
 
-		/* Move to the tail so that we do not encounter it in the
-		 * next iteration.
-		 */
-		list_move_tail(&encl->encl_list, &ctx->encl_list);
+        /* Move to the tail so that we do not encounter it in the
+         * next iteration.
+         */
+        list_move_tail(&encl->encl_list, &ctx->encl_list);
 
-		/* Enclave with faulted pages?  */
-		if (!list_empty(&encl->load_list) &&
-		    kref_get_unless_zero(&encl->refcount))
-			break;
+        /* Enclave with faulted pages?  */
+        if (!list_empty(&encl->load_list) &&
+            kref_get_unless_zero(&encl->refcount))
+            break;
 
-		encl = NULL;
-	}
+        encl = NULL;
+    }
 
-	mutex_unlock(&sgx_tgid_ctx_mutex);
+    mutex_unlock(&sgx_tgid_ctx_mutex);
 
-	return encl;
+    return encl;
 }
 
 static void sgx_isolate_pages(struct sgx_encl *encl,
-			      struct list_head *dst,
-			      unsigned long nr_to_scan)
+                  struct list_head *dst,
+                  unsigned long nr_to_scan)
 {
-	struct sgx_epc_page *entry;
-	int i;
+    struct sgx_epc_page *entry;
+    int i;
 
-	mutex_lock(&encl->lock);
+    mutex_lock(&encl->lock);
 
-	if (encl->flags & SGX_ENCL_DEAD)
-		goto out;
+    if (encl->flags & SGX_ENCL_DEAD)
+        goto out;
 
-	for (i = 0; i < nr_to_scan; i++) {
-		if (list_empty(&encl->load_list))
-			break;
+    for (i = 0; i < nr_to_scan; i++) {
+        if (list_empty(&encl->load_list))
+            break;
 
-		entry = list_first_entry(&encl->load_list,
-					 struct sgx_epc_page,
-					 list);
+        entry = list_first_entry(&encl->load_list,
+                     struct sgx_epc_page,
+                     list);
 
-		if (!sgx_test_and_clear_young(entry->encl_page, encl) &&
-	  	!(entry->encl_page->flags & SGX_ENCL_PAGE_RESERVED)) {
-				entry->encl_page->flags |= SGX_ENCL_PAGE_RESERVED;
-				list_move_tail(&entry->list, dst);
-		} else {
-		list_move_tail(&entry->list, &encl->load_list);
-		}
-	}
+        if (!sgx_test_and_clear_young(entry->encl_page, encl) &&
+        !(entry->encl_page->flags & SGX_ENCL_PAGE_RESERVED)) {
+                entry->encl_page->flags |= SGX_ENCL_PAGE_RESERVED;
+                list_move_tail(&entry->list, dst);
+        } else {
+        list_move_tail(&entry->list, &encl->load_list);
+        }
+    }
 out:
-	mutex_unlock(&encl->lock);
+    mutex_unlock(&encl->lock);
 }
 
 static int __sgx_ewb(struct sgx_encl *encl,
-		     struct sgx_encl_page *encl_page)
+             struct sgx_encl_page *encl_page)
 {
-	struct sgx_pageinfo pginfo;
-	struct page *backing;
-	struct page *pcmd;
-	unsigned long pcmd_offset;
-	void *epc;
-	void *va;
-	int ret;
+    struct sgx_pageinfo pginfo;
+    struct page *backing;
+    struct page *pcmd;
+    unsigned long pcmd_offset;
+    void *epc;
+    void *va;
+    int ret;
 
-	pcmd_offset = ((encl_page->addr >> PAGE_SHIFT) & 31) * 128;
+    pcmd_offset = ((encl_page->addr >> PAGE_SHIFT) & 31) * 128;
 
-	backing = sgx_get_backing(encl, encl_page, false);
-	if (IS_ERR(backing)) {
-		ret = PTR_ERR(backing);
-		sgx_warn(encl, "pinning the backing page for EWB failed with %d\n",
-			 ret);
-		return ret;
-	}
+    backing = sgx_get_backing(encl, encl_page, false);
+    if (IS_ERR(backing)) {
+        ret = PTR_ERR(backing);
+        sgx_warn(encl, "pinning the backing page for EWB failed with %d\n",
+             ret);
+        return ret;
+    }
 
-	pcmd = sgx_get_backing(encl, encl_page, true);
-	if (IS_ERR(pcmd)) {
-		ret = PTR_ERR(pcmd);
-		sgx_warn(encl, "pinning the pcmd page for EWB failed with %d\n",
-			 ret);
-		goto out;
-	}
+    pcmd = sgx_get_backing(encl, encl_page, true);
+    if (IS_ERR(pcmd)) {
+        ret = PTR_ERR(pcmd);
+        sgx_warn(encl, "pinning the pcmd page for EWB failed with %d\n",
+             ret);
+        goto out;
+    }
 
-	epc = sgx_get_page(encl_page->epc_page);
-	va = sgx_get_page(encl_page->va_page->epc_page);
+    epc = sgx_get_page(encl_page->epc_page);
+    va = sgx_get_page(encl_page->va_page->epc_page);
 
-	pginfo.srcpge = (unsigned long)kmap_atomic(backing);
-	pginfo.pcmd = (unsigned long)kmap_atomic(pcmd) + pcmd_offset;
-	pginfo.linaddr = 0;
-	pginfo.secs = 0;
-	ret = __ewb(&pginfo, epc,
-		    (void *)((unsigned long)va + encl_page->va_offset));
-	kunmap_atomic((void *)(unsigned long)(pginfo.pcmd - pcmd_offset));
-	kunmap_atomic((void *)(unsigned long)pginfo.srcpge);
+    pginfo.srcpge = (unsigned long)kmap_atomic(backing);
+    pginfo.pcmd = (unsigned long)kmap_atomic(pcmd) + pcmd_offset;
+    pginfo.linaddr = 0;
+    pginfo.secs = 0;
+    ret = __ewb(&pginfo, epc,
+            (void *)((unsigned long)va + encl_page->va_offset));
+    kunmap_atomic((void *)(unsigned long)(pginfo.pcmd - pcmd_offset));
+    kunmap_atomic((void *)(unsigned long)pginfo.srcpge);
 
-	sgx_put_page(va);
-	sgx_put_page(epc);
-	sgx_put_backing(pcmd, true);
+    sgx_put_page(va);
+    sgx_put_page(epc);
+    sgx_put_backing(pcmd, true);
 
 out:
-	sgx_put_backing(backing, true);
-	return ret;
+    sgx_put_backing(backing, true);
+    return ret;
 }
 
 static bool sgx_ewb(struct sgx_encl *encl,
-		    struct sgx_encl_page *entry)
+            struct sgx_encl_page *entry)
 {
-	int ret = __sgx_ewb(encl, entry);
+    int ret = __sgx_ewb(encl, entry);
 
-	if (ret == SGX_NOT_TRACKED) {
-		/* slow path, IPI needed */
-		sgx_flush_cpus(encl);
-		ret = __sgx_ewb(encl, entry);
-	}
+    if (ret == SGX_NOT_TRACKED) {
+        /* slow path, IPI needed */
+        sgx_flush_cpus(encl);
+        ret = __sgx_ewb(encl, entry);
+    }
 
-	if (ret) {
-		/* make enclave inaccessible */
-		sgx_invalidate(encl, true);
-		if (ret > 0)
-			sgx_err(encl, "EWB returned %d, enclave killed\n", ret);
-		return false;
-	}
+    if (ret) {
+        /* make enclave inaccessible */
+        sgx_invalidate(encl, true);
+        if (ret > 0)
+            sgx_err(encl, "EWB returned %d, enclave killed\n", ret);
+        return false;
+    }
 
-	return true;
+    return true;
 }
 
 static void sgx_evict_page(struct sgx_encl_page *entry,
-			   struct sgx_encl *encl)
+               struct sgx_encl *encl)
 {
-	sgx_ewb(encl, entry);
-	sgx_free_page(entry->epc_page, encl);
-	entry->epc_page = NULL;
-	entry->flags &= ~SGX_ENCL_PAGE_RESERVED;
+    sgx_ewb(encl, entry);
+    sgx_free_page(entry->epc_page, encl);
+    entry->epc_page = NULL;
+    entry->flags &= ~SGX_ENCL_PAGE_RESERVED;
 }
 
 static void sgx_write_pages(struct sgx_encl *encl, struct list_head *src)
 {
-	struct sgx_epc_page *entry;
-	struct sgx_epc_page *tmp;
-	struct vm_area_struct *vma;
-	int ret;
+    struct sgx_epc_page *entry;
+    struct sgx_epc_page *tmp;
+    struct vm_area_struct *vma;
+    int ret;
 
-	if (list_empty(src))
-		return;
+    if (list_empty(src))
+        return;
 
-	entry = list_first_entry(src, struct sgx_epc_page, list);
+    entry = list_first_entry(src, struct sgx_epc_page, list);
 
-	mutex_lock(&encl->lock);
+    mutex_lock(&encl->lock);
 
-	/* EBLOCK */
-	list_for_each_entry_safe(entry, tmp, src, list) {
-		ret = sgx_encl_find(encl->mm, entry->encl_page->addr, &vma);
-		if (!ret && encl == vma->vm_private_data)
-			sgx_zap_vma_ptes(vma, entry->encl_page->addr, entry->encl_page->page_size); //YSSU
-		sgx_eblock(encl, entry);
-	}
+    /* EBLOCK */
+    list_for_each_entry_safe(entry, tmp, src, list) {
+        ret = sgx_encl_find(encl->mm, entry->encl_page->addr, &vma);
+        if (!ret && encl == vma->vm_private_data)
+            sgx_zap_vma_ptes(vma, entry->encl_page->addr, entry->encl_page->page_size); //YSSU
+        sgx_eblock(encl, entry);
+    }
 
-	/* ETRACK */
-	sgx_etrack(encl);
+    /* ETRACK */
+    sgx_etrack(encl);
 
-	/* EWB */
-	while (!list_empty(src)) {
-		entry = list_first_entry(src, struct sgx_epc_page, list);
-		list_del(&entry->list);
-		sgx_evict_page(entry->encl_page, encl);
-		encl->secs_child_cnt--;
-	}
+    /* EWB */
+    while (!list_empty(src)) {
+        entry = list_first_entry(src, struct sgx_epc_page, list);
+        list_del(&entry->list);
+        sgx_evict_page(entry->encl_page, encl);
+        encl->secs_child_cnt--;
+    }
 
-	if (!encl->secs_child_cnt && (encl->flags & SGX_ENCL_INITIALIZED)) {
-		sgx_evict_page(&encl->secs, encl);
-		encl->flags |= SGX_ENCL_SECS_EVICTED;
-	}
+    if (!encl->secs_child_cnt && (encl->flags & SGX_ENCL_INITIALIZED)) {
+        sgx_evict_page(&encl->secs, encl);
+        encl->flags |= SGX_ENCL_SECS_EVICTED;
+    }
 
-	mutex_unlock(&encl->lock);
+    mutex_unlock(&encl->lock);
 }
 
 static void sgx_swap_pages(unsigned long nr_to_scan)
 {
-	struct sgx_tgid_ctx *ctx;
-	struct sgx_encl *encl;
-	LIST_HEAD(cluster);
+    struct sgx_tgid_ctx *ctx;
+    struct sgx_encl *encl;
+    LIST_HEAD(cluster);
 
-	pr_info("%s\n",__func__);
+    pr_info("%s\n",__func__);
 
-	ctx = sgx_isolate_tgid_ctx(nr_to_scan);
-	if (!ctx)
-		return;
+    ctx = sgx_isolate_tgid_ctx(nr_to_scan);
+    if (!ctx)
+        return;
 
-	encl = sgx_isolate_encl(ctx, nr_to_scan);
-	if (!encl)
-		goto out;
+    encl = sgx_isolate_encl(ctx, nr_to_scan);
+    if (!encl)
+        goto out;
 
-	down_read(&encl->mm->mmap_sem);
-	sgx_isolate_pages(encl, &cluster, nr_to_scan);
-	sgx_write_pages(encl, &cluster);
-	up_read(&encl->mm->mmap_sem);
+    down_read(&encl->mm->mmap_sem);
+    sgx_isolate_pages(encl, &cluster, nr_to_scan);
+    sgx_write_pages(encl, &cluster);
+    up_read(&encl->mm->mmap_sem);
 
-	kref_put(&encl->refcount, sgx_encl_release);
+    kref_put(&encl->refcount, sgx_encl_release);
 out:
-	kref_put(&ctx->refcount, sgx_tgid_ctx_release);
+    kref_put(&ctx->refcount, sgx_tgid_ctx_release);
 }
 
 static int ksgxswapd(void *p)
 {
-	set_freezable();
+    set_freezable();
 
-	while (!kthread_should_stop()) {
-		if (try_to_freeze())
-			continue;
+    while (!kthread_should_stop()) {
+        if (try_to_freeze())
+            continue;
 
-		wait_event_freezable(ksgxswapd_waitq,
-				     kthread_should_stop() ||
-				     sgx_nr_free_pages < sgx_nr_high_pages);
+        wait_event_freezable(ksgxswapd_waitq,
+                     kthread_should_stop() ||
+                     sgx_nr_free_pages < sgx_nr_high_pages);
 
-		if (sgx_nr_free_pages < sgx_nr_high_pages)
-			sgx_swap_pages(SGX_NR_SWAP_CLUSTER_MAX);
-	}
+        if (sgx_nr_free_pages < sgx_nr_high_pages)
+            sgx_swap_pages(SGX_NR_SWAP_CLUSTER_MAX);
+    }
 
-	pr_info("%s: done\n", __func__);
-	return 0;
+    pr_info("%s: done\n", __func__);
+    return 0;
 }
 
 #ifdef BUDDY
@@ -441,249 +442,249 @@ static int ksgxswapd(void *p)
  */
 int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 {
-	unsigned long i;
-	struct sgx_epc_page *new_epc_page, *entry;
-	struct list_head *parser, *temp;
+    unsigned long i;
+    struct sgx_epc_page *new_epc_page, *entry;
+    struct list_head *parser, *temp;
 
-	pr_info("intel sgx: %s\n", __func__);
-	//YSSU: create only large pages initially
-	for (i = 0; (i + LARGE_PAGE_SIZE) < size; i += LARGE_PAGE_SIZE) {
-		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
-		if (!new_epc_page)
-			goto err_freelist;
-		new_epc_page->pa = (start + i) | bank;
-		new_epc_page->page_size = LARGE_PAGE_SIZE; //YSSU
+    pr_info("intel sgx: %s\n", __func__);
+    //YSSU: create only large pages initially
+    for (i = 0; (i + LARGE_PAGE_SIZE) < size; i += LARGE_PAGE_SIZE) {
+        new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
+        if (!new_epc_page)
+            goto err_freelist;
+        new_epc_page->pa = (start + i) | bank;
+        new_epc_page->page_size = LARGE_PAGE_SIZE; //YSSU
 
-		//YSSU: add 2M pages to 0 order list
-		spin_lock(&sgx_free_list_lock);
-		list_add_tail(&new_epc_page->list, &sgx_free_lists[0]);
-		sgx_free_lists_count[0]++;
-		sgx_nr_lp_pages++;
-		sgx_nr_free_pages += 512;
-		sgx_nr_total_epc_pages += 512;
-		spin_unlock(&sgx_free_list_lock);
-	}
+        //YSSU: add 2M pages to 0 order list
+        spin_lock(&sgx_free_list_lock);
+        list_add_tail(&new_epc_page->list, &sgx_free_lists[0]);
+        sgx_free_lists_count[0]++;
+        sgx_nr_lp_pages++;
+        sgx_nr_free_pages += 512;
+        sgx_nr_total_epc_pages += 512;
+        spin_unlock(&sgx_free_list_lock);
+    }
 
-	for( ;i < size; i += PAGE_SIZE) {
-		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
-		if (!new_epc_page)
-			goto err_freelist;
-		new_epc_page->pa = (start + i) | bank;
-		new_epc_page->page_size = PAGE_SIZE;
+    for( ;i < size; i += PAGE_SIZE) {
+        new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
+        if (!new_epc_page)
+            goto err_freelist;
+        new_epc_page->pa = (start + i) | bank;
+        new_epc_page->page_size = PAGE_SIZE;
 
-		spin_lock(&sgx_free_list_lock);
-		list_add_tail(&new_epc_page->list, &sgx_free_lists[LIST_COUNT-1]);
-		sgx_free_lists_count[LIST_COUNT-1]++;
-		sgx_nr_total_epc_pages++;
-		sgx_nr_free_pages++;
-		spin_unlock(&sgx_free_list_lock);
-	}
-	//YSSU: allocate memory for page_is_split bit structure
+        spin_lock(&sgx_free_list_lock);
+        list_add_tail(&new_epc_page->list, &sgx_free_lists[LIST_COUNT-1]);
+        sgx_free_lists_count[LIST_COUNT-1]++;
+        sgx_nr_total_epc_pages++;
+        sgx_nr_free_pages++;
+        spin_unlock(&sgx_free_list_lock);
+    }
+    //YSSU: allocate memory for page_is_split bit structure
   //page_is_split[0] = (uint8_t *) kzalloc(sgx_nr_lp_pages*(1<<(LIST_COUNT-1))*sizeof(uint8_t), GFP_KERNEL);
-	pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_lp_pages);
-	pr_info("intel sgx: %s: %d 4K pages initialized\n", __func__, sgx_free_lists_count[LIST_COUNT-1]);
-	return 0;
+    pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_lp_pages);
+    pr_info("intel sgx: %s: %d 4K pages initialized\n", __func__, sgx_free_lists_count[LIST_COUNT-1]);
+    return 0;
 
 err_freelist:
-		list_for_each_safe(parser, temp, &sgx_free_lists[0]) {
-			spin_lock(&sgx_free_list_lock);
-			entry = list_entry(parser, struct sgx_epc_page, list);
-			list_del(&entry->list);
-			spin_unlock(&sgx_free_list_lock);
-			kfree(entry);
-			sgx_free_lists_count[0]--;
-		}
-		list_for_each_safe(parser, temp, &sgx_free_lists[LIST_COUNT-1]) {
-			spin_lock(&sgx_free_list_lock);
-			entry = list_entry(parser, struct sgx_epc_page, list);
-			list_del(&entry->list);
-			spin_unlock(&sgx_free_list_lock);
-			kfree(entry);
-			sgx_free_lists_count[LIST_COUNT-1]--;
-		}
-		return -ENOMEM;
+        list_for_each_safe(parser, temp, &sgx_free_lists[0]) {
+            spin_lock(&sgx_free_list_lock);
+            entry = list_entry(parser, struct sgx_epc_page, list);
+            list_del(&entry->list);
+            spin_unlock(&sgx_free_list_lock);
+            kfree(entry);
+            sgx_free_lists_count[0]--;
+        }
+        list_for_each_safe(parser, temp, &sgx_free_lists[LIST_COUNT-1]) {
+            spin_lock(&sgx_free_list_lock);
+            entry = list_entry(parser, struct sgx_epc_page, list);
+            list_del(&entry->list);
+            spin_unlock(&sgx_free_list_lock);
+            kfree(entry);
+            sgx_free_lists_count[LIST_COUNT-1]--;
+        }
+        return -ENOMEM;
 }
 
 #else
 int sgx_add_epc_bank(resource_size_t start, unsigned long size, int bank)
 {
-	unsigned long i;
-	struct sgx_epc_page *new_epc_page, *entry;
-	struct list_head *parser, *temp;
+    unsigned long i;
+    struct sgx_epc_page *new_epc_page, *entry;
+    struct list_head *parser, *temp;
 
-	pr_info("intel sgx:%s\n", __func__);
+    pr_info("intel sgx:%s\n", __func__);
 
-	for (i = 0; i < size; i += PAGE_SIZE) {
-		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
-		if (!new_epc_page)
-			goto err_freelist;
-		new_epc_page->pa = (start + i) | bank;
-		new_epc_page->page_size = PAGE_SIZE; //YSSU
+    for (i = 0; i < size; i += PAGE_SIZE) {
+        new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
+        if (!new_epc_page)
+            goto err_freelist;
+        new_epc_page->pa = (start + i) | bank;
+        new_epc_page->page_size = PAGE_SIZE; //YSSU
 
-		spin_lock(&sgx_free_list_lock);
-		list_add_tail(&new_epc_page->list, &sgx_free_list);
-		sgx_nr_total_epc_pages++;
-		sgx_nr_free_pages++;
-		spin_unlock(&sgx_free_list_lock);
-	}
-	pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_free_pages);
-	return 0;
+        spin_lock(&sgx_free_list_lock);
+        list_add_tail(&new_epc_page->list, &sgx_free_list);
+        sgx_nr_total_epc_pages++;
+        sgx_nr_free_pages++;
+        spin_unlock(&sgx_free_list_lock);
+    }
+    pr_info("intel sgx: %s: %d 2M pages initialized\n", __func__, sgx_nr_free_pages);
+    return 0;
 
 err_freelist:
-	pr_info("%s: ERROR\n", __func__);
-	list_for_each_safe(parser, temp, &sgx_free_list) {
-		spin_lock(&sgx_free_list_lock);
-		entry = list_entry(parser, struct sgx_epc_page, list);
-		list_del(&entry->list);
-		spin_unlock(&sgx_free_list_lock);
-		kfree(entry);
-	}
-	return -ENOMEM;
+    pr_info("%s: ERROR\n", __func__);
+    list_for_each_safe(parser, temp, &sgx_free_list) {
+        spin_lock(&sgx_free_list_lock);
+        entry = list_entry(parser, struct sgx_epc_page, list);
+        list_del(&entry->list);
+        spin_unlock(&sgx_free_list_lock);
+        kfree(entry);
+    }
+    return -ENOMEM;
 }
 #endif
 //YSSU
 int sgx_add_epc_lp_bank(resource_size_t start, unsigned long size, int bank)
 {
-	unsigned long i;
-	struct sgx_epc_page *new_epc_page, *entry;
-	struct list_head *parser, *temp;
+    unsigned long i;
+    struct sgx_epc_page *new_epc_page, *entry;
+    struct list_head *parser, *temp;
 
-	for (i = 0; i < size; i += LARGE_PAGE_SIZE) {
-		new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
-		if (!new_epc_page)
-			goto err_freelist;
-		//YSSU: *IMPORTANT* It is necessary to have the bank bit set
-		new_epc_page->pa = (start + i) | bank;
-		new_epc_page->page_size = LARGE_PAGE_SIZE; //YSSU
+    for (i = 0; i < size; i += LARGE_PAGE_SIZE) {
+        new_epc_page = kzalloc(sizeof(*new_epc_page), GFP_KERNEL);
+        if (!new_epc_page)
+            goto err_freelist;
+        //YSSU: *IMPORTANT* It is necessary to have the bank bit set
+        new_epc_page->pa = (start + i) | bank;
+        new_epc_page->page_size = LARGE_PAGE_SIZE; //YSSU
 
-		spin_lock(&sgx_free_list_lock);
-		list_add_tail(&new_epc_page->list, &sgx_free_lp_list);
-		sgx_nr_lp_pages++;
-		spin_unlock(&sgx_free_list_lock);
-	}
-	pr_info("intel_sgx: Second bank added. LP pages=%d\n", sgx_nr_lp_pages);
-	return 0;
+        spin_lock(&sgx_free_list_lock);
+        list_add_tail(&new_epc_page->list, &sgx_free_lp_list);
+        sgx_nr_lp_pages++;
+        spin_unlock(&sgx_free_list_lock);
+    }
+    pr_info("intel_sgx: Second bank added. LP pages=%d\n", sgx_nr_lp_pages);
+    return 0;
 
 err_freelist:
-	list_for_each_safe(parser, temp, &sgx_free_lp_list) {
-		spin_lock(&sgx_free_list_lock);
-		entry = list_entry(parser, struct sgx_epc_page, list);
-		list_del(&entry->list);
-		spin_unlock(&sgx_free_list_lock);
-		kfree(entry);
-	}
-	return -ENOMEM;
+    list_for_each_safe(parser, temp, &sgx_free_lp_list) {
+        spin_lock(&sgx_free_list_lock);
+        entry = list_entry(parser, struct sgx_epc_page, list);
+        list_del(&entry->list);
+        spin_unlock(&sgx_free_list_lock);
+        kfree(entry);
+    }
+    return -ENOMEM;
 }
 
 int sgx_page_cache_init(void)
 {
-	struct task_struct *tmp;
+    struct task_struct *tmp;
 
-	sgx_nr_high_pages = 2 * sgx_nr_low_pages;
+    sgx_nr_high_pages = 2 * sgx_nr_low_pages;
 
-	tmp = kthread_run(ksgxswapd, NULL, "ksgxswapd");
-	if (!IS_ERR(tmp))
-		ksgxswapd_tsk = tmp;
+    tmp = kthread_run(ksgxswapd, NULL, "ksgxswapd");
+    if (!IS_ERR(tmp))
+        ksgxswapd_tsk = tmp;
 
-	//YSSU
-	mm_alloc_pmd_p = (void *)kallsyms_lookup_name("mm_alloc_pmd");
-	if(mm_alloc_pmd_p == NULL)
-		return -EINVAL;
+    //YSSU
+    mm_alloc_pmd_p = (void *)kallsyms_lookup_name("mm_alloc_pmd");
+    if(mm_alloc_pmd_p == NULL)
+        return -EINVAL;
 
-	return PTR_ERR_OR_ZERO(tmp);
+    return PTR_ERR_OR_ZERO(tmp);
 }
 
 void sgx_page_cache_teardown(void)
 {
-	struct sgx_epc_page *entry;
-	struct list_head *parser, *temp;
+    struct sgx_epc_page *entry;
+    struct list_head *parser, *temp;
 
-	int8_t order; //YSSU
+    int8_t order; //YSSU
 
-	if (ksgxswapd_tsk) {
-		kthread_stop(ksgxswapd_tsk);
-		ksgxswapd_tsk = NULL;
-	}
+    if (ksgxswapd_tsk) {
+        kthread_stop(ksgxswapd_tsk);
+        ksgxswapd_tsk = NULL;
+    }
 #ifndef BUDDY
-	spin_lock(&sgx_free_list_lock);
-	list_for_each_safe(parser, temp, &sgx_free_list) {
-		entry = list_entry(parser, struct sgx_epc_page, list);
-		list_del(&entry->list);
-		kfree(entry);
-	}
-	//YSSU
-	list_for_each_safe(parser, temp, &sgx_free_lp_list) {
-		entry = list_entry(parser, struct sgx_epc_page, list);
-		list_del(&entry->list);
-		kfree(entry);
-	}
-	spin_unlock(&sgx_free_list_lock);
+    spin_lock(&sgx_free_list_lock);
+    list_for_each_safe(parser, temp, &sgx_free_list) {
+        entry = list_entry(parser, struct sgx_epc_page, list);
+        list_del(&entry->list);
+        kfree(entry);
+    }
+    //YSSU
+    list_for_each_safe(parser, temp, &sgx_free_lp_list) {
+        entry = list_entry(parser, struct sgx_epc_page, list);
+        list_del(&entry->list);
+        kfree(entry);
+    }
+    spin_unlock(&sgx_free_list_lock);
 #else //YSSU
-	spin_lock(&sgx_free_list_lock);
-	for(order = 0; order < LIST_COUNT; order++) {
-		list_for_each_safe(parser, temp, &sgx_free_lists[order]) {
-			entry = list_entry(parser, struct sgx_epc_page, list);
-			list_del(&entry->list);
-			kfree(entry);
-		}
-	}
-	spin_unlock(&sgx_free_list_lock);
+    spin_lock(&sgx_free_list_lock);
+    for(order = 0; order < LIST_COUNT; order++) {
+        list_for_each_safe(parser, temp, &sgx_free_lists[order]) {
+            entry = list_entry(parser, struct sgx_epc_page, list);
+            list_del(&entry->list);
+            kfree(entry);
+        }
+    }
+    spin_unlock(&sgx_free_list_lock);
 #endif
 }
 
 static struct sgx_epc_page *sgx_alloc_page_fast(void)
 {
-	struct sgx_epc_page *entry = NULL;
+    struct sgx_epc_page *entry = NULL;
 
-	spin_lock(&sgx_free_list_lock);
+    spin_lock(&sgx_free_list_lock);
 #ifndef BUDDY
-	if (!list_empty(&sgx_free_list)) {
-		entry = list_first_entry(&sgx_free_list, struct sgx_epc_page,
-					 list);
-		list_del(&entry->list);
-		sgx_nr_free_pages--;
-	}
+    if (!list_empty(&sgx_free_list)) {
+        entry = list_first_entry(&sgx_free_list, struct sgx_epc_page,
+                     list);
+        list_del(&entry->list);
+        sgx_nr_free_pages--;
+    }
 #else
-	entry = sgx_alloc_page_buddy(0);
-	if(entry)
-		sgx_nr_free_pages--;
+    entry = sgx_alloc_page_buddy(0);
+    if(entry)
+        sgx_nr_free_pages--;
 #endif
-	spin_unlock(&sgx_free_list_lock);
+    spin_unlock(&sgx_free_list_lock);
 
-	return entry;
+    return entry;
 }
 
 //YSSU
 static struct sgx_epc_page *sgx_alloc_lp_page_fast(void)
 {
-	struct sgx_epc_page *entry = NULL;
+    struct sgx_epc_page *entry = NULL;
 
-	spin_lock(&sgx_free_list_lock);
+    spin_lock(&sgx_free_list_lock);
 #ifndef BUDDY
-	if (!list_empty(&sgx_free_lp_list)) {
-		entry = list_first_entry(&sgx_free_lp_list, struct sgx_epc_page,
-					 list);
-		list_del(&entry->list);
+    if (!list_empty(&sgx_free_lp_list)) {
+        entry = list_first_entry(&sgx_free_lp_list, struct sgx_epc_page,
+                     list);
+        list_del(&entry->list);
 
-		sgx_nr_lp_pages--;
-	}
+        sgx_nr_lp_pages--;
+    }
 #else
-	entry = sgx_alloc_page_buddy(1);
-	if(entry)
-	{
-		sgx_nr_lp_pages--;
-		sgx_nr_free_pages -= 512;
-		sgx_nr_total_epc_pages -= 512;
-	}
+    entry = sgx_alloc_page_buddy(1);
+    if(entry)
+    {
+        sgx_nr_lp_pages--;
+        sgx_nr_free_pages -= 512;
+        sgx_nr_total_epc_pages -= 512;
+    }
 #endif
 
-	spin_unlock(&sgx_free_list_lock);
+    spin_unlock(&sgx_free_list_lock);
 
-	return entry;
+    return entry;
 }
 /**
  * sgx_alloc_page - allocate an EPC page
- * @flags:	allocation flags
+ * @flags:  allocation flags
  *
  * Try to grab a page from the free EPC page list. If there is a free page
  * available, it is returned to the caller. If called with SGX_ALLOC_ATOMIC,
@@ -695,57 +696,57 @@ static struct sgx_epc_page *sgx_alloc_lp_page_fast(void)
  */
 struct sgx_epc_page *sgx_alloc_page(unsigned int flags)
 {
-	struct sgx_epc_page *entry;
+    struct sgx_epc_page *entry;
 
-	for ( ; ; ) {
-		entry = sgx_alloc_page_fast();
-		if (entry)
-			break;
-		/* This is to avoid swapping as of now */
-		// else
-		// {
-				// pr_info("intel_sgx: cannot allocate pages \n");
-				//return ERR_PTR(-ENOMEM);
-		// }
-		/* We need at minimum two pages for the #PF handler. */
-		if (atomic_read(&sgx_va_pages_cnt) >
-		    (sgx_nr_total_epc_pages - 2))
-			return ERR_PTR(-ENOMEM);
+    for ( ; ; ) {
+        entry = sgx_alloc_page_fast();
+        if (entry)
+            break;
+        /* This is to avoid swapping as of now */
+        // else
+        // {
+                // pr_info("intel_sgx: cannot allocate pages \n");
+                //return ERR_PTR(-ENOMEM);
+        // }
+        /* We need at minimum two pages for the #PF handler. */
+        if (atomic_read(&sgx_va_pages_cnt) >
+            (sgx_nr_total_epc_pages - 2))
+            return ERR_PTR(-ENOMEM);
 
-		if (flags & SGX_ALLOC_ATOMIC) {
-			entry = ERR_PTR(-EBUSY);
-			break;
-		}
+        if (flags & SGX_ALLOC_ATOMIC) {
+            entry = ERR_PTR(-EBUSY);
+            break;
+        }
 
-		if (signal_pending(current)) {
-			entry = ERR_PTR(-ERESTARTSYS);
-			break;
-		}
+        if (signal_pending(current)) {
+            entry = ERR_PTR(-ERESTARTSYS);
+            break;
+        }
 
-		sgx_swap_pages(SGX_NR_SWAP_CLUSTER_MAX);
-		schedule();
-	}
+        sgx_swap_pages(SGX_NR_SWAP_CLUSTER_MAX);
+        schedule();
+    }
 
-	if (sgx_nr_free_pages < sgx_nr_low_pages)
-		wake_up(&ksgxswapd_waitq);
+    if (sgx_nr_free_pages < sgx_nr_low_pages)
+        wake_up(&ksgxswapd_waitq);
 
-	return entry;
+    return entry;
 }
 
 //YSSU
 struct sgx_epc_page *sgx_alloc_lp_page(unsigned int flags)
 {
-	struct sgx_epc_page *entry;
+    struct sgx_epc_page *entry;
 
-	for ( ; ; ) {
-		entry = sgx_alloc_lp_page_fast();
-		if (entry)
-			break;
-		else
-			return ERR_PTR(-ENOMEM);
-	}
+    for ( ; ; ) {
+        entry = sgx_alloc_lp_page_fast();
+        if (entry)
+            break;
+        else
+            return ERR_PTR(-ENOMEM);
+    }
 
-	return entry;
+    return entry;
 }
 /**
  * sgx_free_page - free an EPC page
@@ -754,60 +755,60 @@ struct sgx_epc_page *sgx_alloc_lp_page(unsigned int flags)
  * If EREMOVE fails, the error is printed out loud as a critical error.
  * It is an indicator of a driver bug if that would happen.
  *
- * @entry:	any EPC page
- * @encl:	enclave that owns the given EPC page
+ * @entry:  any EPC page
+ * @encl:   enclave that owns the given EPC page
  */
 void sgx_free_page(struct sgx_epc_page *entry, struct sgx_encl *encl)
 {
-	void *epc;
-	int ret;
-	int i;//YSSU
+    void *epc;
+    int ret;
+    int i;//YSSU
 
-	epc = sgx_get_page(entry);
-	for(i=0; i<entry->page_size; i+=PAGE_SIZE) //YSSU
-	{
-		ret = __eremove(epc + i); //YSSU
-		if (ret)
-			sgx_crit(encl, "EREMOVE returned %d\n", ret);
-	}
-	sgx_put_page(epc);
+    epc = sgx_get_page(entry);
+    for(i=0; i<entry->page_size; i+=PAGE_SIZE) //YSSU
+    {
+        ret = __eremove(epc + i); //YSSU
+        if (ret)
+            sgx_crit(encl, "EREMOVE returned %d\n", ret);
+    }
+    sgx_put_page(epc);
 
-	spin_lock(&sgx_free_list_lock);
+    spin_lock(&sgx_free_list_lock);
 #ifndef BUDDY
-	if(entry->page_size == LARGE_PAGE_SIZE) //YSSU
-	{
-			list_add(&entry->list, &sgx_free_lp_list);
-			sgx_nr_lp_pages++;
-	}
-	else
-	{
-		list_add(&entry->list, &sgx_free_list);
-		sgx_nr_free_pages++;
-	}
+    if(entry->page_size == LARGE_PAGE_SIZE) //YSSU
+    {
+            list_add(&entry->list, &sgx_free_lp_list);
+            sgx_nr_lp_pages++;
+    }
+    else
+    {
+        list_add(&entry->list, &sgx_free_list);
+        sgx_nr_free_pages++;
+    }
 #else
-	sgx_free_page_buddy(entry);
-	sgx_nr_free_pages += (entry->page_size / PAGE_SIZE);
-	sgx_nr_total_epc_pages += (entry->page_size / PAGE_SIZE);
+    sgx_free_page_buddy(entry);
+    sgx_nr_free_pages += (entry->page_size / PAGE_SIZE);
+    sgx_nr_total_epc_pages += (entry->page_size / PAGE_SIZE);
 #endif
-	spin_unlock(&sgx_free_list_lock);
+    spin_unlock(&sgx_free_list_lock);
 }
 
 void *sgx_get_page(struct sgx_epc_page *entry)
 {
 #ifdef CONFIG_X86_32
-	return kmap_atomic_pfn(PFN_DOWN(entry->pa));
+    return kmap_atomic_pfn(PFN_DOWN(entry->pa));
 #else
-	int i = ((entry->pa) & ~PAGE_MASK);
+    int i = ((entry->pa) & ~PAGE_MASK);
 
-	return (void *)(sgx_epc_banks[i].va +
-		((entry->pa & PAGE_MASK) - sgx_epc_banks[i].pa));
+    return (void *)(sgx_epc_banks[i].va +
+        ((entry->pa & PAGE_MASK) - sgx_epc_banks[i].pa));
 #endif
 }
 
 void sgx_put_page(void *epc_page_vaddr)
 {
 #ifdef CONFIG_X86_32
-	kunmap_atomic(epc_page_vaddr);
+    kunmap_atomic(epc_page_vaddr);
 #else
 #endif
 }
